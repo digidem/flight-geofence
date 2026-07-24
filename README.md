@@ -1,0 +1,699 @@
+# Flight Geofence Alerts
+
+![Status: Research PoC](https://img.shields.io/badge/status-research%20PoC-6b2847)
+![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-application-009688?logo=fastapi&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![SQLite](https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white)
+![Private by default](https://img.shields.io/badge/access-private%20by%20default-174c3c)
+
+Detects probable aircraft stops and position loss inside selected protected areas in northern Brazil.
+
+Flight Geofence Alerts is a private, single-operator proof of concept that combines official Brazilian protected-area boundaries with live aircraft-position feeds. It monitors selected Indigenous territories and neighboring conservation units, records potentially relevant aircraft behavior, and supports a controlled progression from silent observation to reviewed email alerts.
+
+> [!CAUTION]
+> An event is an **unverified monitoring signal**. It does not prove landing, deliberate transponder shutdown, illegal mining, or wrongdoing. Aircraft feeds are incomplete—especially for low-flying aircraft in areas with limited receiver coverage—and every event requires human corroboration.
+
+**Release:** `v0.4.0` · **Default phase:** `Shadow` · **Default bind:** `127.0.0.1:8080`
+
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Operating phases](#operating-phases)
+- [Quick start](#quick-start)
+- [First-run workflow](#first-run-workflow)
+- [Boundary data](#boundary-data)
+- [Flight providers](#flight-providers)
+- [Detection rules](#detection-rules)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [Operations](#operations)
+- [Security model](#security-model)
+- [Project structure](#project-structure)
+- [Testing](#testing)
+- [Known limitations](#known-limitations)
+- [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why this exists
+
+Aircraft can play an important role in remote Amazonian logistics, including legitimate health, public-service, community, and commercial operations. They can also be associated with unauthorized extractive activity. General flight-tracking products do not provide a simple, community-controlled workflow for comparing aircraft behavior with Indigenous territories and conservation areas.
+
+This project is intended to answer a narrower question before investing in a larger system:
+
+> **Can available aircraft feeds produce useful, sufficiently low-noise signals inside selected protected areas?**
+
+The PoC helps measure coverage, false positives, provider costs, useful alert patterns, and where community-controlled ADS-B receivers would add the most value.
+
+## What it does
+
+- Downloads current Indigenous-territory polygons from FUNAI's official WFS.
+- Discovers and downloads active conservation-unit polygons from MMA/CNUC.
+- Refreshes official boundaries weekly and preserves operator selections.
+- Includes Indigenous territories intersecting Pará, Amazonas, Amapá, or Roraima, with all administrative phases.
+- Includes conservation units intersecting or within a configurable distance of those territories.
+- Lets an authenticated operator select exactly which areas to monitor.
+- Generates deterministic, overlapping query regions for flight providers.
+- Supports free and paid aircraft-position providers behind a common adapter layer.
+- Records only two potentially suspicious signals:
+  - **probable stop or sustained very low-speed movement**;
+  - **position no longer observed after the aircraft was seen inside**.
+- Suppresses high-confidence scheduled-airline matches while retaining unknown aircraft as candidates.
+- Stores state, events, reviews, configuration, sync health, and delivery status in SQLite.
+- Sends alerts through Resend or SMTP only after the operator enables the `Live` phase.
+- Runs in a hardened Docker Compose deployment with a private table-first interface.
+
+It intentionally does **not** send routine entry or exit emails, retain complete long-term trajectories, publicly expose live aircraft positions, or make automated accusations.
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph Official[Official boundary sources]
+        FUNAI["FUNAI WFS<br/>Indigenous territories"]
+        CNUC["MMA / CNUC<br/>conservation units"]
+    end
+
+    subgraph Application[Flight Geofence Alerts]
+        SYNC["Weekly boundary sync<br/>validate · repair · filter"]
+        DB[("SQLite<br/>areas · settings · state · events")]
+        UI["Private operator UI<br/>select areas · configure · review"]
+        COVER["Coverage generator<br/>deterministic query regions"]
+        POLL[Scheduled provider polling]
+        NORMALIZE["Normalize and merge<br/>fresh positions by ICAO hex"]
+        GEOFENCE[Geofence and state engine]
+        SIGNAL{Qualifying signal?}
+        PHASE{Operating phase}
+        REVIEW[Store for operator review]
+        EMAIL[Resend or SMTP alert]
+    end
+
+    subgraph Feeds[Aircraft-position providers]
+        LOL[ADSB.lol]
+        LIVE[Airplanes.live]
+        ADSBX[ADS-B Exchange]
+        FR24[Flightradar24]
+    end
+
+    FUNAI --> SYNC
+    CNUC --> SYNC
+    SYNC --> DB
+    UI <--> DB
+    DB --> COVER
+    COVER --> POLL
+    POLL --> LOL
+    POLL --> LIVE
+    POLL --> ADSBX
+    POLL --> FR24
+    LOL --> NORMALIZE
+    LIVE --> NORMALIZE
+    ADSBX --> NORMALIZE
+    FR24 --> NORMALIZE
+    NORMALIZE --> GEOFENCE
+    DB --> GEOFENCE
+    GEOFENCE --> SIGNAL
+    SIGNAL -->|No| DB
+    SIGNAL -->|Probable stop or disappearance| DB
+    DB --> PHASE
+    PHASE -->|Shadow| REVIEW
+    PHASE -->|Review| REVIEW
+    PHASE -->|Live| EMAIL
+    REVIEW --> UI
+```
+
+### Data flow in plain language
+
+1. The boundary updater downloads, validates, and filters official FUNAI and CNUC polygons.
+2. The operator selects the territories and conservation units to monitor.
+3. The application generates provider query regions covering those selected polygons.
+4. Enabled providers are polled on a schedule.
+5. Fresh observations are normalized and merged by ICAO 24-bit hex identifier.
+6. The state engine compares each aircraft with selected polygons and its prior observations.
+7. Only probable-stop and disappearance events are stored.
+8. `Shadow` and `Review` keep alerts inside the dashboard; `Live` also sends email.
+
+## Operating phases
+
+| Phase | Real boundaries | Real flight polling | Event recording | Operator review | External email |
+|---|---:|---:|---:|---:|---:|
+| **Shadow** | Yes | Yes | Yes | Optional | No |
+| **Review** | Yes | Yes | Yes | Required for calibration | No |
+| **Live** | Yes | Yes | Yes | Recommended | Yes |
+
+### Shadow
+
+The safe default. Use real data without sending alerts outside the application. Start here to validate boundary sync, provider coverage, request volume, and event frequency.
+
+### Review
+
+Operators label events as `useful`, `noise`, or `uncertain`, add notes, adjust thresholds, and narrow area selection. This phase turns initial observations into evidence about whether the system is worth developing further.
+
+### Live
+
+New qualifying events are sent through Resend or SMTP. The interface refuses a transition to Live when required email settings are missing. Returning to Shadow or Review pauses pending retries.
+
+## Quick start
+
+### Requirements
+
+- Docker Engine
+- Docker Compose v2
+- Approximately 4 GB of free RAM during large boundary processing
+- Several GB of disk space for temporary downloads and persistent state
+
+### 1. Configure secrets
+
+```bash
+cp .env.example .env
+```
+
+Set at least:
+
+```env
+ADMIN_PASSWORD=replace-with-a-long-unique-password
+APP_SECRET_KEY=replace-with-output-of-openssl-rand-hex-32
+```
+
+Generate an application secret:
+
+```bash
+openssl rand -hex 32
+```
+
+### 2. Start the private deployment
+
+```bash
+docker compose up --build -d
+```
+
+Open:
+
+```text
+http://127.0.0.1:8080
+```
+
+The application binds only to localhost by default. For a remote server, use an SSH tunnel or the optional Caddy HTTPS profile.
+
+### 3. Follow startup health
+
+```bash
+docker compose ps
+docker compose logs -f flight-monitor
+```
+
+The first official boundary sync may take several minutes and use substantial memory while processing national datasets.
+
+## First-run workflow
+
+1. Log in with `ADMIN_PASSWORD`.
+2. Wait for the initial official-boundary sync, or select **Sync official boundaries**.
+3. Confirm that the sync shows plausible territory and conservation-unit counts.
+4. Search and select the areas to monitor.
+5. Review the generated query-region count and estimated daily provider requests.
+6. Keep the phase set to **Shadow**.
+7. Test ADSB.lol—or another configured provider—from Settings.
+8. Run a manual coverage poll.
+9. Let the system collect events for several days.
+10. Move to **Review** and classify events.
+11. Tune thresholds, providers, and selected areas based on observed noise.
+12. Configure and test email.
+13. Move to **Live** only after alerts appear operationally useful.
+
+Command-line equivalents:
+
+```bash
+# Force an official-boundary sync
+make sync
+
+# Run one flight coverage poll
+make poll
+```
+
+## Boundary data
+
+### Source fallback chain
+
+The application uses a multi-source fallback chain to ensure reliable boundary data:
+
+**Indigenous territories:**
+1. FUNAI WFS `tis_poligonais` (primary, requires browser-like User-Agent header)
+2. Last known-good local snapshot (fallback)
+
+**Conservation units:**
+1. ICMBio WFS `limiteucsfederais_a` (primary for federal UCs)
+2. CNUC via MMA CKAN discovery (fallback for all UCs)
+3. RAISG protected areas ArcGIS REST (final fallback)
+4. Last known-good local snapshot (emergency)
+
+### FUNAI Indigenous territories
+
+The updater requests the official polygon WFS layer:
+
+```text
+https://geoserver.funai.gov.br/geoserver/Funai/ows
+```
+
+using `typeName=Funai:tis_poligonais` and `outputFormat=SHAPE-ZIP`. A browser-like User-Agent header is required to avoid 403 errors from the FUNAI server.
+
+### ICMBio Federal conservation units
+
+The updater queries the ICMBio WFS for federal conservation units:
+
+```text
+https://geoservicos.inde.gov.br/geoserver/ICMBio/ows
+```
+
+using `typeNames=ICMBio:limiteucsfederais_a` and `outputFormat=application/json`.
+
+### MMA / CNUC conservation units
+
+The updater queries the official CKAN package metadata and chooses the newest suitable polygon ZIP resource. If discovery fails, it uses the configured official fallback URL.
+
+### RAISG Protected areas
+
+As a final fallback, the updater queries the RAISG ArcGIS REST service for national protected areas:
+
+```text
+https://geo2.socioambiental.org/raisg/rest/services/raisg/raisg_anps_N/MapServer/2/query
+```
+
+Note: The RAISG API has a batch size limit of 100 features per request.
+
+### Import safety
+
+Before replacing a healthy dataset, the sync process:
+
+- limits compressed download size, expanded size, and ZIP member count;
+- rejects path traversal, symbolic links, and malformed archives;
+- validates coordinate systems and polygon geometry;
+- repairs invalid geometry where possible;
+- requires plausible minimum record counts;
+- builds a complete replacement set before modifying the database;
+- preserves selections using stable identifiers;
+- regenerates deterministic query regions.
+
+Weekly behavior is configurable:
+
+```env
+BOUNDARY_SYNC_INTERVAL_DAYS=7
+BOUNDARY_SYNC_CHECK_HOURS=6
+TARGET_STATES=PA,AM,AP,RR
+NEIGHBOR_DISTANCE_KM=10
+```
+
+> [!IMPORTANT]
+> Weekly checks do not imply that the upstream datasets themselves change weekly. The application checks regularly so that newer official releases are incorporated without manual intervention.
+
+## Flight providers
+
+| Provider | Cost model | Key required | Role in this PoC | Important caveat |
+|---|---|---:|---|---|
+| **ADSB.lol** | Free/open | No | Default source for initial Shadow testing | No published SLA or explicit public production quota |
+| **Airplanes.live** | Free public API | No | Optional comparison source | Non-commercial use; app enforces 500 attempts/day |
+| **ADS-B Exchange Enterprise** | Paid | Yes | Strong candidate for unfiltered ADS-B, Mode S, and MLAT-style data | Enterprise credentials and terms required |
+| **Flightradar24 API** | Paid credits | Yes | Adds broad coverage and route/operator metadata | Broad regions can consume credits; storage is capped by provider terms |
+
+### Multiple providers
+
+When several providers are enabled, observations are merged by ICAO hex using the freshest valid position. A disappearance cycle advances only when **every enabled provider successfully completes the aircraft's last query region**. This intentionally favors fewer false disappearances over faster alerts.
+
+### Configuration examples
+
+ADSB.lol requires no key:
+
+```env
+FLIGHT_PROVIDERS=adsb_lol
+```
+
+Paid providers:
+
+```env
+FLIGHT_PROVIDERS=adsb_lol,adsbexchange,flightradar24
+ADSBEXCHANGE_API_KEY=...
+FLIGHTRADAR24_API_KEY=...
+```
+
+Provider credentials can also be saved through the authenticated interface when their matching environment values are blank.
+
+## Detection rules
+
+### Probable stop
+
+Default requirements:
+
+- inside at least one selected polygon;
+- not matched by the high-confidence scheduled-airline heuristic;
+- at least three fresh inside observations;
+- ground status or ground speed no greater than `20 kt`;
+- movement remains within `500 m`;
+- qualifying low-speed condition lasts at least `120 seconds`;
+- one probable-stop event per aircraft episode.
+
+The low-speed timer begins only with a qualifying observation and resets after high-speed movement, excessive displacement, or a long observation gap.
+
+### Disappearance
+
+Default requirements:
+
+- last fresh position was inside a selected polygon;
+- at least two inside observations;
+- no high-confidence scheduled-airline match;
+- last altitude no greater than `6,000 ft MSL`, or altitude unavailable;
+- aircraft absent for three complete successful coverage cycles of its last region;
+- one disappearance event per aircraft episode.
+
+Provider failures never count as aircraft disappearance. Two fresh outside observations are required to close an episode, reducing boundary jitter.
+
+### “Non-commercial” is a heuristic
+
+ADS-B does not provide an authoritative legal or business classification. The app suppresses high-confidence scheduled-airline matches using configurable callsign prefixes, operator information, and airliner type codes. Unknown aircraft remain candidates.
+
+The interface therefore uses **non-airline candidate**—not “illegal aircraft,” “garimpo aircraft,” or a definitive “non-commercial flight” label.
+
+## Configuration
+
+Configuration follows this precedence:
+
+1. nonblank environment value;
+2. value saved through the authenticated interface;
+3. application default.
+
+Environment-controlled values appear locked in the UI. Secrets entered in the interface are encrypted using `APP_SECRET_KEY` and are never returned to the browser.
+
+> [!WARNING]
+> Preserve `APP_SECRET_KEY` in backups. Changing it makes previously stored interface secrets unreadable.
+
+### Minimum environment
+
+```env
+ADMIN_PASSWORD=...
+APP_SECRET_KEY=...
+```
+
+### Resend
+
+```env
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+EMAIL_FROM=Flight Monitor <alerts@your-verified-domain.org>
+ALERT_RECIPIENTS=luandro@gmail.com
+```
+
+Use a verified sending domain. The application supplies a stable idempotency key per event and retries failed delivery with bounded backoff.
+
+### SMTP
+
+```env
+EMAIL_PROVIDER=smtp
+EMAIL_FROM=your-address@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-address@gmail.com
+SMTP_PASSWORD=your-google-app-password
+SMTP_STARTTLS=true
+ALERT_RECIPIENTS=luandro@gmail.com
+```
+
+Use a Google app password rather than a normal account password.
+
+See [`.env.example`](.env.example) for every option and its safe default.
+
+## Deployment
+
+### Private/local deployment
+
+The safest default is localhost-only:
+
+```bash
+make up
+```
+
+For a remote host, use an SSH tunnel:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 user@server
+```
+
+Then browse to `http://127.0.0.1:8080` locally.
+
+### Public HTTPS with Caddy
+
+Set:
+
+```env
+DOMAIN=monitor.example.org
+SESSION_HTTPS_ONLY=true
+TRUSTED_HOSTS=monitor.example.org,localhost,127.0.0.1
+```
+
+Point the domain at the server, allow TCP ports `80` and `443` plus UDP `443`, then run:
+
+```bash
+make public
+```
+
+Do not expose the application port directly. The public profile places Caddy in front of the authenticated app and manages HTTPS automatically.
+
+### Container hardening
+
+The app container runs with:
+
+- a non-root user;
+- read-only root filesystem;
+- all Linux capabilities dropped;
+- `no-new-privileges`;
+- PID and log limits;
+- health and readiness checks;
+- persistent named volumes only for runtime data and downloads;
+- graceful shutdown and cross-process job locks.
+
+## Operations
+
+### Common commands
+
+```bash
+make up                 # start private/local deployment
+make public             # start with Caddy HTTPS profile
+make logs               # follow application logs
+make sync               # force official-boundary update
+make poll               # run one provider coverage cycle
+make check              # compile and run tests
+make backup             # create an online SQLite backup
+make fix-permissions    # repair ownership from an older root-run release
+make down               # stop containers
+```
+
+Delete all persistent data only when intentionally resetting the PoC:
+
+```bash
+docker compose down -v
+```
+
+### Backup
+
+```bash
+./scripts/backup.sh
+```
+
+Choose a destination:
+
+```bash
+./scripts/backup.sh backups/flight-geofence.db
+```
+
+Back up before upgrading. Do not change `APP_SECRET_KEY` between deployments unless you are intentionally discarding encrypted UI configuration.
+
+### Health endpoints
+
+- `/healthz` confirms that the HTTP process is alive.
+- `/readyz` checks SQLite readiness and is used by Docker health checks.
+
+Operational status is also visible in the dashboard, including sync health, poll health, selected-area count, query-region count, estimated request volume, provider configuration, and review totals.
+
+## Security model
+
+- Password-authenticated, single-operator interface.
+- Signed `SameSite=Strict` session cookie.
+- Optional HTTPS-only session cookie.
+- CSRF protection for authenticated state-changing requests.
+- Login throttling after repeated failures.
+- Host-header allowlist.
+- Content Security Policy and defensive browser headers.
+- API documentation endpoints disabled.
+- Secrets removed from browser responses and logs.
+- UI-managed secrets encrypted at rest.
+- Hardened non-root container deployment.
+
+This is **not** a multi-user identity or authorization system. Keep it private and do not publish sensitive event data.
+
+For security findings, avoid opening a public issue containing credentials, exact sensitive locations, or live operational data. Contact the maintainer privately through an agreed project channel.
+
+## Project structure
+
+```text
+.
+├── app/
+│   ├── main.py              # FastAPI app, routes, middleware, schedulers
+│   ├── auth.py              # login, sessions, throttling, CSRF
+│   ├── boundary_sync.py     # official FUNAI/CNUC discovery and import
+│   ├── coverage.py          # query-region generation
+│   ├── detection.py         # geofence state machine and event rules
+│   ├── emailer.py           # Resend/SMTP delivery and retries
+│   ├── geofences.py         # in-memory spatial index
+│   ├── providers/           # aircraft-provider adapters
+│   ├── settings_store.py    # encrypted UI settings and precedence
+│   └── static/              # private table-first frontend
+├── scripts/
+│   └── backup.sh            # consistent SQLite backup
+├── tests/                   # unit and integration tests
+├── .github/workflows/ci.yml # compile, test, frontend, Compose, image build
+├── .env.example             # complete deployment configuration
+├── docker-compose.yml       # private app, optional Caddy, maintenance job
+├── Dockerfile               # hardened Python runtime image
+├── Caddyfile                # optional public HTTPS proxy
+├── docs/
+│   ├── SPEC.md              # product and behavior specification
+│   ├── RESEARCH.md          # official sources and provider research
+│   ├── AUDIT.md             # v0.4 corrective/hardening audit
+│   └── VALIDATION.md        # checks completed and external limitations
+```
+
+## Testing
+
+Install development dependencies:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
+Run the full local check:
+
+```bash
+make check
+```
+
+The GitHub Actions workflow additionally validates frontend syntax, Docker Compose configuration, and the container build.
+
+Useful targeted commands:
+
+```bash
+python -m pytest
+python -m compileall -q app tests
+node --check app/static/app.js
+docker compose config --quiet
+```
+
+## Known limitations
+
+- Aircraft that emit no usable signal—or are outside all receiver coverage—cannot be detected.
+- Low-altitude coverage in the Amazon may be sparse or intermittent.
+- “Non-airline candidate” is a heuristic, not an authoritative commercial or legal classification.
+- Low speed does not necessarily mean landing.
+- Position loss does not establish intent or transponder shutdown.
+- Altitude is generally relative to mean sea level, not terrain.
+- Official and commercial upstream schemas, quotas, and terms can change independently of this project.
+- This remains a single-operator PoC rather than a production incident-response platform.
+
+## Troubleshooting
+
+<details>
+<summary><strong>The application refuses to start</strong></summary>
+
+Confirm that `.env` contains nonexample values for both required secrets:
+
+```env
+ADMIN_PASSWORD=...
+APP_SECRET_KEY=...
+```
+
+`APP_SECRET_KEY` must be at least 32 characters. Inspect logs with:
+
+```bash
+docker compose logs flight-monitor
+```
+
+</details>
+
+<details>
+<summary><strong>No protected areas appear</strong></summary>
+
+Run a manual sync and inspect its result:
+
+```bash
+make sync
+docker compose logs --tail=300 flight-monitor
+```
+
+Check outbound connectivity to FUNAI and MMA, available disk space, and memory. A failed or implausibly partial import does not replace an existing healthy dataset.
+
+</details>
+
+<details>
+<summary><strong>No aircraft appear</strong></summary>
+
+- Verify that at least one provider is enabled.
+- Use the provider test in Settings.
+- Confirm selected areas and generated query regions.
+- Review provider errors and request estimates.
+- Remember that no result may reflect real receiver-coverage limitations rather than an application failure.
+
+</details>
+
+<details>
+<summary><strong>Events appear but no email is sent</strong></summary>
+
+- Confirm that the phase is `Live`.
+- Verify the email provider, sender, recipient, and key/password.
+- Run the email test in Settings.
+- For Resend, use a verified sending domain.
+- Check the daily email cap and retry status in the event record.
+
+</details>
+
+<details>
+<summary><strong>A previous release created root-owned volume files</strong></summary>
+
+Run the one-time maintenance task:
+
+```bash
+make fix-permissions
+```
+
+Then start normally.
+
+</details>
+
+## Documentation
+
+- [Product specification](docs/SPEC.md)
+- [Research and official sources](docs/RESEARCH.md)
+- [Security and reliability audit](docs/AUDIT.md)
+- [Validation record](docs/VALIDATION.md)
+- [Complete environment reference](.env.example)
+
+## Contributing
+
+This is an early research PoC. Before proposing a major feature, open a discussion or issue describing:
+
+- the operational problem;
+- how it reduces false positives or improves coverage;
+- privacy and security implications;
+- provider terms or cost implications;
+- how the change can be tested without exposing sensitive locations or events.
+
+For code changes:
+
+1. create a focused branch;
+2. keep provider-specific logic behind an adapter;
+3. update the specification when behavior changes;
+4. add tests for state transitions and failure behavior;
+5. run `make check` before submitting a pull request;
+6. never commit `.env`, credentials, downloaded sensitive data, or live event exports.
+
+## License
+
+**UNLICENSED.** No open-source license has been assigned to this repository yet. All rights are reserved unless and until a license file is added.

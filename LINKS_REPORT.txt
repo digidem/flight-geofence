@@ -1,0 +1,291 @@
+===============================================================================
+FLIGHT GEOFENCE ALERTS - EMAIL LINKS REPORT
+===============================================================================
+Report Date: 2026-07-24
+Version: 0.4.0
+Purpose: Document all clickable links in email alerts for research and improvement
+===============================================================================
+
+1. OVERVIEW
+-------------------------------------------------------------------------------
+The flight geofence alert system sends email notifications when suspicious
+aircraft activity is detected over protected areas in the Brazilian Amazon.
+Each email contains multiple clickable links to help investigators quickly
+access relevant information about the aircraft, location, and data sources.
+
+2. LINKS INVENTORY
+-------------------------------------------------------------------------------
+
+2.1 ICAO HEX CODE (Aircraft Identifier)
+----------------------------------------
+Field: "Aeronave" / "Aircraft"
+Example: E49ABC
+Link Pattern: https://www.flightradar24.com/data/aircraft/{hex}
+Example URL: https://www.flightradar24.com/data/aircraft/e49abc
+Link Type: External (FlightRadar24)
+Status: WORKING
+Notes: Links to the aircraft's page on FlightRadar24 showing flight history,
+       photos, and technical details. Some hex codes may not have pages if
+       the aircraft is not tracked by FR24.
+
+2.2 CALLSIGN
+----------------------------------------
+Field: "Indicativo" / "Callsign"
+Example: GLO1234
+Link Pattern: https://www.flightradar24.com/data/callsigns/{callsign}
+Example URL: https://www.flightradar24.com/data/callsigns/glo1234
+Link Type: External (FlightRadar24)
+Status: WORKING
+Notes: Links to FlightRadar24's callsign database. May not work for all
+       callsigns, especially temporary or non-standard ones.
+
+2.3 REGISTRATION (Brazilian Aircraft)
+----------------------------------------
+Field: "Registro" / "Registration"
+Example: PT-ABC
+Link Logic:
+  - Brazilian registrations (PT-XXX): https://www.gov.br/anac/pt-br/assuntos/registro-aeronaves
+  - Other registrations: https://www.flightradar24.com/data/aircraft/{reg}
+Link Type: External (ANAC for Brazilian, FlightRadar24 for others)
+Status: WORKING
+Notes: ANAC link goes to the general registry page, not a specific aircraft.
+       Future improvement: Link to specific aircraft in ANAC database if
+       their API allows direct lookups.
+
+2.4 AIRCRAFT TYPE
+----------------------------------------
+Field: "Tipo de aeronave" / "Aircraft type"
+Example: B738, A20N, C208
+Link Pattern: https://www.flightradar24.com/data/aircraft/{type}
+Example URL: https://www.flightradar24.com/data/aircraft/b738
+Link Type: External (FlightRadar24)
+Status: WORKING
+Notes: Links to FlightRadar24's aircraft type page showing specifications,
+       operators, and photos. Some rare types may not have pages.
+
+2.5 PROTECTED AREAS
+----------------------------------------
+Field: "Áreas protegidas" / "Protected areas"
+Example: Acapuri de Cima, Terras Indígenas
+Link: https://www.socioambiental.org/
+Link Type: External (ISA - Instituto Socioambiental)
+Status: WORKING
+Limitations:
+  - Links to ISA homepage, not to specific territory pages
+  - Does not link to individual area records
+  - ISA has detailed info at: https://www.socioambiental.org/pt-br/terras-indigenas
+  - FUNAI also has territory data: https://www.gov.br/funai/pt-br/atuacao/terras-indigenas
+  - CNUC (conservation units): https://www.fundacaobiodiversitas.org.br/cnuc/
+Recommendations:
+  - Could link to specific territory pages if area IDs are available
+  - Could link to RAISG maps: https://terrasindigenas.org.br/
+  - Could include direct WFS download links for GIS users
+
+2.6 LAST POSITION (Coordinates)
+----------------------------------------
+Field: "Última posição" / "Last position"
+Example: -3.1, -59.9
+Link Pattern: https://www.google.com/maps?q={lat},{lon}
+Example URL: https://www.google.com/maps?q=-3.1,-59.9
+Link Type: External (Google Maps)
+Status: WORKING
+Notes: Opens Google Maps centered on the exact coordinates. Works on both
+       desktop and mobile devices. Alternative services considered:
+       - OpenStreetMap: https://www.openstreetmap.org/?mlat={lat}&mlon={lon}
+       - Bing Maps: https://www.bing.com/maps?cp={lat}~{lon}
+
+2.7 PROVIDER (Data Source)
+----------------------------------------
+Field: "Fonte" / "Provider"
+Example: adsb_lol, airplanes_live, adsbexchange, flightradar24
+Link Logic:
+  - adsb_lol: https://adsb.lol
+  - airplanes_live: https://airplanes.live
+  - adsbexchange: https://www.adsbexchange.com
+  - flightradar24: https://www.flightradar24.com
+Link Type: External (Provider websites)
+Status: WORKING
+Notes: Links to the data provider's homepage. Shows the source of the
+       flight data used for detection.
+
+2.8 ORIGIN (Airport)
+----------------------------------------
+Field: "Origem" / "Origin"
+Example: Manaus
+Link Pattern: https://www.google.com/maps/search/{city}+airport
+Example URL: https://www.google.com/maps/search/Manaus+airport
+Link Type: External (Google Maps)
+Status: PARTIALLY WORKING
+Issues:
+  - Generic search, not a direct airport link
+  - May not find airports for small cities or airstrips
+  - No ICAO/IATA code lookup
+Recommendations:
+  - Use airport ICAO codes when available: https://www.google.com/maps/search/SBMA
+  - Link to FlightRadar24 airport pages: https://www.flightradar24.com/airport/{code}
+  - Consider using OurAirports database for lookup
+
+2.9 DESTINATION (Airport)
+----------------------------------------
+Field: "Destino" / "Destination"
+Example: Boa Vista
+Link Pattern: https://www.google.com/maps/search/{city}+airport
+Example URL: https://www.google.com/maps/search/Boa+Vista+airport
+Link Type: External (Google Maps)
+Status: PARTIALLY WORKING
+Issues: Same as Origin
+Recommendations: Same as Origin
+
+2.10 EVENT TYPE (Translated)
+----------------------------------------
+Field: "Evento" / "Event"
+Example: Possível Pouso, Desaparecimento
+Link: None (display only)
+Status: N/A
+Notes: Event types are translated to Portuguese but not clickable.
+
+2.11 TIME
+----------------------------------------
+Field: "Horário" / "Time"
+Example: Terça-feira 24/07/2026 às 15:34
+Link: None (display only)
+Status: N/A
+Notes: Formatted in Brazilian time zone (UTC-3).
+
+2.12 ALTITUDE
+----------------------------------------
+Field: "Altitude" / "Altitude"
+Example: 2500 ft MSL
+Link: None (display only)
+Status: N/A
+
+2.13 GROUND SPEED
+----------------------------------------
+Field: "Velocidade" / "Ground speed"
+Example: 120 kt
+Link: None (display only)
+Status: N/A
+
+2.14 SOURCE TYPE
+----------------------------------------
+Field: "Tipo de dado" / "Source type"
+Example: ADS-B, MLAT, Multilateration
+Link: None (display only)
+Status: N/A
+Notes: Indicates the type of surveillance data used.
+
+2.15 REASON
+----------------------------------------
+Field: "Motivo" / "Reason"
+Example: Aeronave estacionada dentro da área protegida
+Link: None (display only)
+Status: N/A
+
+2.16 CLASSIFICATION
+----------------------------------------
+Field: "Classificação" / "Classification"
+Example: Companhia aérea, Candidato desconhecido
+Link: None (display only)
+Status: N/A
+
+
+3. BROKEN OR POTENTIALLY BROKEN LINKS
+-------------------------------------------------------------------------------
+
+3.1 Registration → ANAC (Brazilian)
+Status: PARTIALLY BROKEN
+Issue: Links to general ANAC page, not specific aircraft
+Impact: User must manually search for the registration
+Fix: Check if ANAC has a searchable database or API
+
+3.2 Protected Areas → ISA
+Status: FUNCTIONAL BUT GENERIC
+Issue: Links to ISA homepage, not specific territory
+Impact: User must navigate to find the specific area
+Fix: Link to specific territory page if area ID mapping exists
+
+3.3 Origin/Destination → Google Maps Search
+Status: FUNCTIONAL BUT IMPRECISE
+Issue: Generic city+airport search, not direct airport link
+Impact: May return multiple results or no results
+Fix: Use ICAO/IATA codes when available
+
+4. RECOMMENDED IMPROVEMENTS
+-------------------------------------------------------------------------------
+
+4.1 Priority 1 (High Impact)
+- Add ICAO airport codes to origin/destination data
+- Link to specific ISA territory pages for protected areas
+- Add fallback URLs when primary links fail
+
+4.2 Priority 2 (Medium Impact)
+- Add OpenStreetMap alternative for coordinates
+- Link to specific ANAC aircraft records if API available
+- Add ADS-B Exchange aircraft lookup for hex codes
+
+4.3 Priority 3 (Nice to Have)
+- Add satellite imagery links (Google Earth, Sentinel Hub)
+- Add nearby airport information
+- Add weather data links for the location
+- Add NOTAM (Notice to Airmen) links for the area
+
+5. DATA SOURCES REFERENCE
+-------------------------------------------------------------------------------
+
+FlightRadar24:
+  - Aircraft: https://www.flightradar24.com/data/aircraft/{hex}
+  - Callsigns: https://www.flightradar24.com/data/callsigns/{callsign}
+  - Airports: https://www.flightradar24.com/airport/{code}
+  - Types: https://www.flightradar24.com/data/aircraft/{type}
+
+ANAC (Brazilian Aviation Authority):
+  - Registry: https://www.gov.br/anac/pt-br/assuntos/registro-aeronaves
+  - Aircraft lookup: Not publicly available via API
+
+ISA (Instituto Socioambiental):
+  - Homepage: https://www.socioambiental.org/
+  - Territories: https://www.socioambiental.org/pt-br/terras-indigenas
+  - RAISG: https://terrasindigenas.org.br/
+
+Google Maps:
+  - Coordinates: https://www.google.com/maps?q={lat},{lon}
+  - Search: https://www.google.com/maps/search/{query}
+
+FUNAI (Brazilian Indigenous Affairs):
+  - Homepage: https://www.gov.br/funai/pt-br
+  - Territories: https://www.gov.br/funai/pt-br/atuacao/terras-indigenas
+
+CNUC (National Conservation Units):
+  - Database: https://www.fundacaobiodiversitas.org.br/cnuc/
+
+ADS-B Exchange:
+  - Aircraft: https://globe.adsbexchange.com/?icao={hex}
+
+ADS-B.lol:
+  - API: https://api.adsb.lol/v2/aircraft/{hex}
+
+6. TESTING NOTES
+-------------------------------------------------------------------------------
+
+All links were tested on 2026-07-24:
+- FlightRadar24 links: Working (some aircraft may not have pages)
+- Google Maps coordinate links: Working
+- ANAC link: Working (generic page, not specific aircraft)
+- ISA link: Working (homepage)
+- Provider links: Working
+- Google Maps airport search: Working (varies by city name)
+
+Email delivery was tested via Resend API and confirmed working.
+
+7. CONTACT & MAINTENANCE
+-------------------------------------------------------------------------------
+
+For questions about this report or to suggest improvements:
+- Project: Flight Geofence Alerts
+- Maintainer: luandro@gmail.com
+- Repository: Local Docker deployment
+
+Review this report quarterly or when adding new data sources.
+===============================================================================
+END OF REPORT
+===============================================================================
