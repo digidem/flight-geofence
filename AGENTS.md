@@ -9,7 +9,7 @@ Maintain a private research PoC that compares aircraft positions with selected B
 ## Commands
 
 ```bash
-python -m pip install -r requirements-dev.txt
+uv sync
 make check
 node --check app/static/app.js
 cp .env.example .env && docker compose config --quiet
@@ -18,7 +18,7 @@ cp .env.example .env && docker compose config --quiet
 Run a focused test with:
 
 ```bash
-python -m pytest tests/test_core.py -k '<test_name>'
+uv run python -m pytest tests/test_core.py -k '<test_name>'
 ```
 
 For Docker or infrastructure changes, also run:

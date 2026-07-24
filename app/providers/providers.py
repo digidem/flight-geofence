@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import httpx
 
 from ..config import env_settings
+from ..i18n import t
 from ..database import (
     get_query_regions,
     provider_requests_today,
@@ -18,6 +19,10 @@ from .base import AircraftObservation
 from .readsb import normalize_readsb, number
 
 logger = logging.getLogger(__name__)
+
+
+def _lang() -> str:
+    return str(get_setting("language") or "pt")
 
 PROVIDER_INFO = {
     "adsb_lol": {
@@ -84,7 +89,7 @@ async def _get_json(
         request_made = False
         try:
             if provider == "airplanes_live" and provider_requests_today(provider) >= 500:
-                raise ProviderFailure("Airplanes.live daily limit of 500 HTTP requests reached")
+                raise ProviderFailure(t("err_provider_daily_limit", _lang()))
             response = await client.get(url, params=params, headers=headers)
             request_made = True
             if response.status_code in (401, 403, 404):
@@ -94,7 +99,7 @@ async def _get_json(
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict):
-                raise ProviderFailure("Provider returned a non-object JSON response")
+                raise ProviderFailure(t("err_provider_non_object", _lang()))
             if provider:
                 record_provider_request(provider, True)
             return payload
@@ -106,7 +111,7 @@ async def _get_json(
                 break
             if attempt < 2:
                 await asyncio.sleep(_retry_delay(response, attempt))
-    raise ProviderFailure(str(last_error) if last_error else "Provider request failed")
+    raise ProviderFailure(str(last_error) if last_error else t("err_provider_request_failed", _lang()))
 
 
 async def _readsb_region(
@@ -130,7 +135,7 @@ async def _readsb_region(
     elif provider == "adsbexchange":
         key = get_setting("adsbexchange_api_key")
         if not key:
-            raise ProviderFailure("ADS-B Exchange API key is missing")
+            raise ProviderFailure(t("err_adsbexchange_key_missing", _lang()))
         url = (
             "https://gateway.adsbexchange.com/api/aircraft/v2/lat/"
             f"{region['latitude']}/lon/{region['longitude']}/dist/{region['radius_nm']}"
@@ -138,7 +143,7 @@ async def _readsb_region(
         # ADS-B Exchange's official examples use the api-auth header.
         headers = {**_headers(), "api-auth": key, "Accept-Encoding": "gzip"}
     else:
-        raise ProviderFailure(f"Unsupported readsb provider: {provider}")
+        raise ProviderFailure(f"{t('err_unsupported_readsb_provider', _lang())}: {provider}")
 
     payload = await _get_json(
         client, url, headers=headers, provider=provider
@@ -180,7 +185,7 @@ async def _fr24_region(
 ) -> list[AircraftObservation]:
     key = get_setting("flightradar24_api_key")
     if not key:
-        raise ProviderFailure("Flightradar24 API key is missing")
+        raise ProviderFailure(t("err_flightradar24_key_missing", _lang()))
 
     payload = await _get_json(
         client,
@@ -300,10 +305,10 @@ async def fetch_all() -> tuple[list[AircraftObservation], set[str], list[str], i
 
 async def test_provider(provider: str) -> dict:
     if provider not in PROVIDER_INFO:
-        raise ProviderFailure("Unknown provider")
+        raise ProviderFailure(t("err_unknown_provider", _lang()))
     regions = get_query_regions()
     if not regions:
-        raise ProviderFailure("Select areas and generate coverage regions first")
+        raise ProviderFailure(t("err_select_areas_first", _lang()))
     items = await fetch_provider_region(provider, regions[0])
     return {
         "provider": provider,

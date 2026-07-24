@@ -25,9 +25,15 @@ from shapely.ops import unary_union
 from .config import env_settings
 from .coverage import regenerate_query_regions
 from .database import replace_areas, save_sync_run
+from .i18n import t
 from .locks import exclusive_job_lock
+from .settings_store import get_setting
 
 logger = logging.getLogger(__name__)
+
+
+def _lang() -> str:
+    return str(get_setting("language") or "pt")
 
 
 def _now() -> str:
@@ -430,12 +436,12 @@ def _records_from_frames(
 def _sync_boundaries_sync() -> dict[str, Any]:
     with exclusive_job_lock("boundary-sync") as acquired:
         if not acquired:
-            return {"status": "skipped", "reason": "Boundary sync already running"}
+            return {"status": "skipped", "reason": t("err_boundaries_sync_running", _lang())}
         with exclusive_job_lock("coverage-poll") as coverage_available:
             if not coverage_available:
                 return {
                     "status": "skipped",
-                    "reason": "A flight coverage poll is currently running",
+                    "reason": t("err_boundaries_poll_running", _lang()),
                 }
             return _sync_boundaries_locked()
 
@@ -651,7 +657,7 @@ def _sync_boundaries_locked() -> dict[str, Any]:
                 funai_zip = _download_funai(client, work, cfg)
                 if not funai_zip:
                     raise RuntimeError(
-                        "FUNAI WFS download failed; cannot proceed without indigenous territory data"
+                        t("err_funai_download_failed", _lang())
                     )
 
                 # Step 2: Download conservation units with fallback chain

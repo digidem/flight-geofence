@@ -599,6 +599,15 @@ $("#lang-toggle").addEventListener("click", async () => {
   $("#lang-toggle").textContent = appState.language === "pt" ? "PT" : "EN";
   updateHtmlLang();
   applyTranslations();
+  // Re-render the active data view so table rows pick up the new language
+  const activeTab = $(".tab.active");
+  if (activeTab) {
+    const view = activeTab.dataset.view;
+    if (view === "dashboard") await loadStatus();
+    if (view === "areas") await loadAreas();
+    if (view === "events") await loadReviews();
+    if (view === "settings") await loadSettings();
+  }
   if (appState.csrfToken) {
     try {
       await api("/api/settings", { method: "POST", body: JSON.stringify({ values: { language: appState.language } }) });

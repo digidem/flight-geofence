@@ -3,4 +3,4 @@
 .link-forest{color:var(--forest);text-decoration:underline}.link-forest:hover{text-decoration:underline}
 :focus-visible{outline:2px solid var(--forest);outline-offset:2px}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--forest);outline-offset:2px}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.01ms!important}}.lang-toggle{font-weight:800;font-size:.72rem;letter-spacing:.08em;min-width:32px}
