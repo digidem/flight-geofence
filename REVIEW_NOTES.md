@@ -209,3 +209,119 @@
 20. **API key never logged** — No logger call includes key contents. Security best practice upheld.
 
 21. **Clean public API** (`__init__.py`) — Exports exactly the intended symbols; no internal helpers leak.
+
+---
+
+## Batch 5: Boundary Sync
+
+**Files**: `app/boundary_sync.py`
+
+### [CRITICAL]
+
+1. **Territories-only record schema incompatible with `replace_areas()`** (`boundary_sync.py:307-320`) — When ICMBio, CNUC, and RAISG all fail, the territories-only path produces records with different field names (`source_id` vs `external_id`, `geometry_wkt` vs `geometry_json`) and four missing fields (`min_lon`, `min_lat`, `max_lon`, `max_lat`). This will crash with `KeyError` at runtime — the exact scenario the fallback chain is designed to handle. The territories-only branch must produce the same record schema as the full branch.
+
+### [IMPORTANT]
+
+2. **`replace_areas()` + `regenerate_query_regions()` lacks rollback** — If `regenerate_query_regions()` fails after areas are committed, the DB is left with new areas but no query regions. Consider wrapping in a savepoint or deferring area deletion until regions are confirmed.
+
+3. **`_target_state_mask()` regex won't match full Portuguese state names** like "PARÁ" — Only matches two-letter abbreviations as whole tokens. Defensive normalization or an OR with common full names would harden it.
+
+4. **No "last known-good local snapshot" fallback implemented** — Spec deviation; acceptable for PoC but should be documented as a known limitation.
+
+5. **Dead code CRS check at line 323-324** — Line 298 already returns early when `conservation.crs is None`. If execution reaches line 323, conservation is guaranteed to have a CRS. This block is unreachable.
+
+### [MINOR]
+
+6. **Inconsistent source casing** — `"funai"` vs `"FUNAI"` used in different code paths.
+
+7. **`geometry.simplify()` tolerance shifts bounding boxes** by up to ~33m. Minor impact on query regions.
+
+8. **403 from FUNAI won't be retried** — Correct (permanent error) but worth noting for operators troubleshooting access issues.
+
+9. **`_choose_shapefile` prefers largest file** — Not necessarily the most semantically relevant. Acceptable heuristic.
+
+### [OK]
+
+10. **ZIP safety** (path traversal, symlinks, size/count limits) is thorough and tested.
+
+11. **FUNAI User-Agent override** correctly isolated from other providers.
+
+12. **Multi-source fallback chain logic** cleanly implemented with proper error handling.
+
+13. **Stable ID design** with coarse-bounds fallback is robust across boundary updates.
+
+14. **Exclusive job lock nesting** is deadlock-free (consistent acquisition order).
+
+15. **Temp directory cleanup** via context manager prevents disk leaks.
+
+---
+
+## Batch 6: Email & i18n
+
+**Files**: `app/emailer.py`, `app/i18n.py`
+
+### [CRITICAL]
+
+1. **XSS via unsanitized lat/lon in HTML email** (`emailer.py:99, 129, 192`) — `_html()` escapes callsign, registration, source_type, reason, classification via `html.escape()`, but leaves `latitude` and `longitude` completely unescaped in both the `href` attribute and display text. A malformed provider response containing `"` or `<` breaks out of the HTML attribute. Similarly, `aircraft_type` (line 129) is used in a URL path without percent-encoding. Apply `html.escape()` + `urllib.parse.quote()` to all provider-derived values in HTML.
+
+2. **`Resend-Idempotency-Key` header leaks into SMTP messages** (`emailer.py:230`) — Line 230 sets `message["Resend-Idempotency-Key"]` before the shared message object is handed to `_smtp_send`. This Resend-specific header appears in every SMTP message. Should only be set in the Resend HTTP path.
+
+### [IMPORTANT]
+
+3. **`_format_time` weekday names hardcoded in Portuguese** (`emailer.py:50-51`) — Portuguese day names (`"Domingo"`, `"Segunda-feira"`, ...) are always used regardless of the `lang` setting. English users see Portuguese day names mixed with English text.
+
+4. **`TIMEZONE_OFFSETS` is a fixed 6-entry dict** (`emailer.py:19-26`) — Any timezone not in the dict silently falls back to `-3`. Consider `zoneinfo.ZoneInfo` for IANA-aware handling.
+
+5. **SMTP path has no idempotency/deduplication** (`emailer.py:289`) — Resend path uses `Idempotency-Key` header; SMTP has nothing. Retries after transient failures can duplicate emails.
+
+6. **No Resend rate limiting — new `httpx.AsyncClient` per send** (`emailer.py:265`) — Under load, rapid sends could hit Resend's rate limits. Consider a shared client or semaphore.
+
+7. **`_html` is ~100 lines of inline HTML** (`emailer.py:113-210`) — Maintaining the plaintext/HTML pair is error-prone. Every field change must be synchronized across `_plain` and `_html`.
+
+8. **Missing translation keys silently show Portuguese to English users** — `t()` falls back to Portuguese, so any key added to `pt` but not `en` produces silent i18n regressions.
+
+9. **No key parity enforcement between `pt` and `en` dicts** (`i18n.py`) — No runtime or CI check that both language dicts have identical keys. Add `assert set(TRANSLATIONS["pt"].keys()) == set(TRANSLATIONS["en"].keys())`.
+
+10. **`translate_*` functions return raw key strings on unknown input** (`i18n.py:367, 378, 389, 401, 411`) — Unknown codes pass through `t()` and appear as raw key strings in user-facing emails.
+
+### [MINOR]
+
+11. **`_valid_sender` allows `a@b..c` and `a@b.c.`** (`emailer.py:213-215`) — Functional but not strict RFC-compliant validation.
+
+12. **Inconsistent quoting styles** (`emailer.py:88 vs 141`) — Single vs double quotes for `event.get()` calls.
+
+13. **`_smtp_send` blocks the event loop thread** (`emailer.py:289`) — Correctly offloaded via `asyncio.to_thread`, but 30s SMTP timeout + retry could compound.
+
+14. **`get_hex_url` is dead code** (`i18n.py:422-424`) — `emailer.py` builds the hex URL inline instead of calling this exported function.
+
+15. **No `__all__` export list** (`i18n.py`) — Public API is implicit.
+
+16. **`get_aircraft_type_url` returns `None` but caller guards with truthiness check** — Redundant null handling.
+
+17. **175-key translation dict maintained manually** — Each new string requires two edits. A CI check or JSON/YAML source would reduce regressions.
+
+### [OK]
+
+18. **Clean console/resend/smtp provider split** (`emailer.py`) — Well-structured provider abstraction.
+
+19. **Structured `(status, error)` return tuples** — Clean error reporting from `send_event_email`.
+
+20. **Email cap check as first guard** (`emailer.py:241`) — Efficient early exit before any SMTP/Resend work.
+
+21. **Proper DOCTYPE, charset, responsive HTML** — Email templates render correctly across clients.
+
+22. **Disclaimer present in both templates** — Spec requirement met.
+
+23. **Neutral, spec-compliant wording** — No accusatory language in event descriptions.
+
+24. **Full two-language coverage for all visible UI areas** (`i18n.py`) — Comprehensive PT/EN translations.
+
+25. **Clean `t(key, lang)` API** (`i18n.py`) — Simple, consistent translation interface.
+
+26. **Domain code → translation key mapping** well-structured in each `translate_*` function.
+
+27. **Email disclaimer matches spec precisely** — Verified against SPEC requirements.
+
+28. **Phase, review status, and category translations complete** — All UI-facing strings covered.
+
+29. **Consistent snake_case key naming** throughout i18n dict.
