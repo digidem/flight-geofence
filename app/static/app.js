@@ -135,6 +135,8 @@ const translations = {
     settings_language: "Idioma",
     settings_display: "Exibição",
     time_at: " às ",
+    review_notes: "Notas",
+    test_button: "Testar",
   },
   en: {
     nav_dashboard: "Dashboard",
@@ -271,6 +273,8 @@ const translations = {
     settings_language: "Language",
     settings_display: "Display",
     time_at: " at ",
+    review_notes: "Notes",
+    test_button: "Test",
   },
 };
 
@@ -431,11 +435,11 @@ function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
   const typeUrl = aircraftTypeUrl(event.aircraft_type);
   const typeDisplay = event.aircraft_type
-    ? (typeUrl ? `<a href="${typeUrl}" target="_blank" rel="noopener" style="color:var(--forest);text-decoration:underline">${escapeHtml(event.aircraft_type)}</a>` : escapeHtml(event.aircraft_type))
+    ? (typeUrl ? `<a href="${typeUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.aircraft_type)}</a>` : escapeHtml(event.aircraft_type))
     : "—";
   const regUrl = registrationUrl(event.registration);
   const regDisplay = event.registration
-    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" style="color:var(--forest);text-decoration:underline">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
+    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
     : "—";
   return `<tr>
     <td>${formatTime(event.occurred_at)}</td>
@@ -512,12 +516,12 @@ async function bulkFiltered(selected) {
 function reviewCard(event) {
   const regUrl = registrationUrl(event.registration);
   const regDisplay = event.registration
-    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" style="color:var(--forest);text-decoration:underline">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
+    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
     : "—";
   return `<article class="review-card" data-id="${escapeHtml(event.id)}">
     <div><strong>${eventLabel(event.event_type)} · <a href="${aircraftUrl(event.aircraft_hex)}" target="_blank" rel="noopener" style="color:var(--ink);text-decoration:underline">${escapeHtml(event.aircraft_hex.toUpperCase())}</a></strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${formatTime(event.occurred_at)}</p></div>
     <label>${t("col_review")}<select class="review-status"><option value="unreviewed">${t("review_unreviewed")}</option><option value="useful">${t("review_useful")}</option><option value="noise">${t("review_noise")}</option><option value="uncertain">${t("review_uncertain")}</option></select></label>
-    <label>Notes<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
+    <label>${t('review_notes', appState.language)}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save">${t("review_save")}</button>
   </article>`;
 }
@@ -648,7 +652,7 @@ async function loadSettings() {
     box.disabled = settings.flight_providers.locked;
   });
   $("#provider-tests").innerHTML = Object.entries(result.provider_options)
-    .map(([id, info]) => `<div class="provider-test"><div><strong>${escapeHtml(info.name)}</strong><p>${escapeHtml(info.note)}</p></div><button class="button secondary" data-provider="${id}">Test</button><span></span></div>`)
+    .map(([id, info]) => `<div class="provider-test"><div><strong>${escapeHtml(info.name)}</strong><p>${escapeHtml(info.note)}</p></div><button class="button secondary" data-provider="${id}">${t('test_button', appState.language)}</button><span></span></div>`)
     .join("");
   $$("button[data-provider]").forEach((button) => {
     button.addEventListener("click", async () => {

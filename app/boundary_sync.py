@@ -692,7 +692,7 @@ def _sync_boundaries_locked() -> dict[str, Any]:
                 run["cnuc_source"] = cnuc_meta.get("url", "")
 
                 # Extract and process territories
-                funai_dir = work / "funai"
+                funai_dir = work / "FUNAI"
                 funai_dir.mkdir()
                 _safe_extract(funai_zip, funai_dir)
                 territories = gpd.read_file(_choose_shapefile(funai_dir, prefer_polygon=True))

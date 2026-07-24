@@ -86,25 +86,25 @@ def _plain(event: dict) -> str:
     altitude = event.get("altitude_ft")
     speed = event.get("ground_speed_kt")
 
-    classification = translate_classification(event.get('airline_classification', ''), lang)
+    classification = translate_classification(event.get("airline_classification", ""), lang)
 
     return f"""{t("email_title", lang)}
 
-{t("email_event", lang)}: {translate_event_type(event['event_type'], lang)}
-{t("email_aircraft", lang)}: {event['aircraft_hex'].upper()}
+{t("email_event", lang)}: {translate_event_type(event["event_type"], lang)}
+{t("email_aircraft", lang)}: {event["aircraft_hex"].upper()}
 {t("email_callsign", lang)}: {callsign}
 {t("email_registration", lang)}: {registration}
 {t("email_aircraft_type", lang)}: {aircraft_type}
 {t("email_protected_areas", lang)}: {areas}
-{t("email_time", lang)}: {_format_time(event['occurred_at'], tz_offset)}
-{t("email_last_position", lang)}: {event.get('latitude')}, {event.get('longitude')}
+{t("email_time", lang)}: {_format_time(event["occurred_at"], tz_offset)}
+{t("email_last_position", lang)}: {event.get("latitude")}, {event.get("longitude")}
 {t("email_altitude", lang)}: {altitude if altitude is not None else t("email_unavailable", lang)} ft MSL
 {t("email_ground_speed", lang)}: {speed if speed is not None else t("email_unavailable", lang)} kt
-{t("email_provider", lang)}: {event['provider']}
-{t("email_source_type", lang)}: {details.get('source_type') or t("email_unavailable", lang)}
-{t("email_origin", lang)}: {details.get('origin') or t("email_unavailable", lang)}
-{t("email_destination", lang)}: {details.get('destination') or t("email_unavailable", lang)}
-{t("email_reason", lang)}: {event['reason']}
+{t("email_provider", lang)}: {event["provider"]}
+{t("email_source_type", lang)}: {details.get("source_type") or t("email_unavailable", lang)}
+{t("email_origin", lang)}: {details.get("origin") or t("email_unavailable", lang)}
+{t("email_destination", lang)}: {details.get("destination") or t("email_unavailable", lang)}
+{t("email_reason", lang)}: {event["reason"]}
 {t("email_classification", lang)}: {classification}
 
 {t("email_disclaimer", lang)}
@@ -130,7 +130,7 @@ def _html(event: dict) -> str:
         aircraft_type_display = f'<a href="{aircraft_type_url}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(aircraft_type)}</a>'
 
     # Build hex code link
-    hex_code = event['aircraft_hex'].upper()
+    hex_code = event["aircraft_hex"].upper()
     hex_url = f"https://www.flightradar24.com/data/aircraft/{event['aircraft_hex'].lower()}"
 
     # Build registration link
@@ -139,17 +139,17 @@ def _html(event: dict) -> str:
     if reg_url:
         registration_display = f'<a href="{reg_url}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(registration)}</a>'
 
-    classification = translate_classification(event.get('airline_classification', ''), lang)
+    classification = translate_classification(event.get("airline_classification", ""), lang)
 
     # Build callsign link
     callsign_display = html_mod.escape(callsign)
-    if event.get('callsign'):
+    if event.get("callsign"):
         callsign_url = f"https://www.flightradar24.com/data/callsigns/{event['callsign'].lower()}"
         callsign_display = f'<a href="{callsign_url}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(callsign)}</a>'
 
     # Build origin/destination links
-    origin = details.get('origin') or ""
-    destination = details.get('destination') or ""
+    origin = details.get("origin") or ""
+    destination = details.get("destination") or ""
     origin_display = html_mod.escape(origin) if origin else t("email_unavailable", lang)
     destination_display = html_mod.escape(destination) if destination else t("email_unavailable", lang)
     if origin:
@@ -160,12 +160,12 @@ def _html(event: dict) -> str:
         destination_display = f'<a href="{destination_url}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(destination)}</a>'
 
     # Build provider link
-    provider = event.get('provider', '')
+    provider = event.get("provider", "")
     provider_urls = {
-        'adsb_lol': 'https://adsb.lol',
-        'airplanes_live': 'https://airplanes.live',
-        'adsbexchange': 'https://www.adsbexchange.com',
-        'flightradar24': 'https://www.flightradar24.com',
+        "adsb_lol": "https://adsb.lol",
+        "airplanes_live": "https://airplanes.live",
+        "adsbexchange": "https://www.adsbexchange.com",
+        "flightradar24": "https://www.flightradar24.com",
     }
     provider_display = html_mod.escape(provider) if provider else t("email_unavailable", lang)
     if provider in provider_urls:
@@ -183,21 +183,21 @@ def _html(event: dict) -> str:
 <div style="background:white;border-radius:12px;padding:24px;box-shadow:0 4px 12px rgba(0,0,0,0.08)">
 <h2 style="color:#6b2847;margin-top:0">{t("email_title", lang)}</h2>
 <table style="width:100%;border-collapse:collapse;font-size:14px">
-<tr><td style="padding:8px 0;color:#746a70;width:140px">{t("email_event", lang)}</td><td style="padding:8px 0"><strong>{translate_event_type(event['event_type'], lang)}</strong></td></tr>
+<tr><td style="padding:8px 0;color:#746a70;width:140px">{t("email_event", lang)}</td><td style="padding:8px 0"><strong>{translate_event_type(event["event_type"], lang)}</strong></td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_aircraft", lang)}</td><td style="padding:8px 0"><strong><a href="{hex_url}" style="color:#174c3c;text-decoration:underline">{hex_code}</a></strong></td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_callsign", lang)}</td><td style="padding:8px 0">{callsign_display}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_registration", lang)}</td><td style="padding:8px 0">{registration_display}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_aircraft_type", lang)}</td><td style="padding:8px 0">{aircraft_type_display}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_protected_areas", lang)}</td><td style="padding:8px 0">{areas_display}</td></tr>
-<tr><td style="padding:8px 0;color:#746a70">{t("email_time", lang)}</td><td style="padding:8px 0">{_format_time(event['occurred_at'], tz_offset)}</td></tr>
-<tr><td style="padding:8px 0;color:#746a70">{t("email_last_position", lang)}</td><td style="padding:8px 0"><a href="https://www.google.com/maps?q={urllib.parse.quote(str(event.get('latitude', '')))},{urllib.parse.quote(str(event.get('longitude', '')))}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(str(event.get('latitude', '')))}, {html_mod.escape(str(event.get('longitude', '')))}</a></td></tr>
+<tr><td style="padding:8px 0;color:#746a70">{t("email_time", lang)}</td><td style="padding:8px 0">{_format_time(event["occurred_at"], tz_offset)}</td></tr>
+<tr><td style="padding:8px 0;color:#746a70">{t("email_last_position", lang)}</td><td style="padding:8px 0"><a href="https://www.google.com/maps?q={urllib.parse.quote(str(event.get("latitude", "")))},{urllib.parse.quote(str(event.get("longitude", "")))}" style="color:#174c3c;text-decoration:underline">{html_mod.escape(str(event.get("latitude", "")))}, {html_mod.escape(str(event.get("longitude", "")))}</a></td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_altitude", lang)}</td><td style="padding:8px 0">{altitude if altitude is not None else t("email_unavailable", lang)} ft MSL</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_ground_speed", lang)}</td><td style="padding:8px 0">{speed if speed is not None else t("email_unavailable", lang)} kt</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_provider", lang)}</td><td style="padding:8px 0">{provider_display}</td></tr>
-<tr><td style="padding:8px 0;color:#746a70">{t("email_source_type", lang)}</td><td style="padding:8px 0">{html_mod.escape(details.get('source_type') or t("email_unavailable", lang))}</td></tr>
+<tr><td style="padding:8px 0;color:#746a70">{t("email_source_type", lang)}</td><td style="padding:8px 0">{html_mod.escape(details.get("source_type") or t("email_unavailable", lang))}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_origin", lang)}</td><td style="padding:8px 0">{origin_display}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_destination", lang)}</td><td style="padding:8px 0">{destination_display}</td></tr>
-<tr><td style="padding:8px 0;color:#746a70">{t("email_reason", lang)}</td><td style="padding:8px 0">{html_mod.escape(event['reason'])}</td></tr>
+<tr><td style="padding:8px 0;color:#746a70">{t("email_reason", lang)}</td><td style="padding:8px 0">{html_mod.escape(event["reason"])}</td></tr>
 <tr><td style="padding:8px 0;color:#746a70">{t("email_classification", lang)}</td><td style="padding:8px 0">{html_mod.escape(classification)}</td></tr>
 </table>
 <div style="margin-top:20px;padding:16px;background:#f4f0e9;border-radius:8px;font-size:12px;color:#746a70">
