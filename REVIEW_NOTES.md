@@ -89,3 +89,123 @@
 14. **Metric-space buffering** (`coverage.py:28-36`) — Correctly transforms to EPSG:5880 for buffering, back to WGS84.
 
 15. **Cross-cutting: `successful_regions` contract verified** — `fully_successful_regions` in `providers.py` only includes regions where ALL enabled providers returned data. Disappearance correctly requires this. Provider failures never inflate disappearance counts.
+
+---
+
+## Batch 3: Data Layer
+
+**Files**: `app/database.py`, `app/locks.py`
+
+### [CRITICAL]
+
+1. **Broad `except IntegrityError` in `insert_event` can mask real data errors** (`database.py`) — The deduplication path catches all `IntegrityError` exceptions and returns `False`. But `IntegrityError` also covers `NOT NULL` violations, `CHECK` constraint failures, and foreign-key errors. A genuine data bug (e.g., missing required field) would be silently treated as "duplicate event" and swallowed. Log the IntegrityError details before returning `False` so real errors surface.
+
+2. **Unguarded SQL table-name interpolation in `_upsert_run`** (`database.py`) — The `table` parameter is interpolated directly into SQL: `f"INSERT INTO {table}"`. While the function is internal and callers pass static strings, this is a SQL-injection-prone pattern. Add an allowlist check or split into separate static functions per table.
+
+3. **`check_same_thread=False` without documentation** (`database.py`) — SQLite is configured with `check_same_thread=False` to allow cross-thread access. This is required for FastAPI's async/await pattern but means the application must handle thread safety manually (which it does via WAL mode and busy_timeout). Add a comment explaining why this is safe.
+
+### [IMPORTANT]
+
+4. **`update_event_email` has a read-then-write race on attempts counter** (`database.py`) — The function reads `email_attempts`, increments locally, then writes back. Two concurrent retries could read the same count and one update would be lost. Use `SET email_attempts = email_attempts + 1` directly in SQL to eliminate the race.
+
+5. **No composite index on `events(provider, occurred_at)` for FR24 cleanup** (`database.py`) — The FR24 retention query filters by `source_type = 'fr24'` and `occurred_at < cutoff`. Without a composite index, this is a full table scan on the events table (which grows unbounded). Add `CREATE INDEX IF NOT EXISTS idx_events_fr24_retention ON events(source_type, occurred_at)`.
+
+6. **Schema migration fragility** (`database.py`) — Additive migration from v0.3 uses `ALTER TABLE ... ADD COLUMN` with bare `except` to ignore "column already exists" errors. This works but relies on SQLite's error message containing "duplicate column name". A more robust approach would check `PRAGMA table_info()` first, but this is acceptable for a PoC.
+
+7. **`PRAGMA foreign_keys=ON` is set but no FK constraints exist** (`database.py`) — The schema creates tables without `REFERENCES` clauses, so the pragma is a no-op. It's not harmful but could mislead readers into thinking FK enforcement is active. Either add FK constraints or remove the pragma with a comment explaining why.
+
+8. **`fcntl.flock` is per open-file-description, not per inode** (`locks.py`) — Two `open()` calls on the same path in the same process get independent locks. The current code opens one file handle per lock acquisition, so reentrancy from the same thread is safe (the lock is advisory and non-blocking). But if the same process acquires the lock from two threads via separate `open()` calls, they'd get separate locks. Document this limitation.
+
+9. **`acquire_lock` swallows `BlockingIOError` silently** (`locks.py`) — When the lock is held by another process, the function returns `None` and the caller treats it as "lock not acquired". This is correct behavior, but the caller (boundary_sync, cli) should log when it fails to acquire the lock.
+
+10. **Stale state cleanup relies on `RETENTION_HOURS` from config** (`database.py`) — If the config value changes at runtime (unlikely but possible via API), the cleanup scope changes retroactively. Consider using the config value at cleanup time, not at state-insertion time.
+
+11. **FR24 event retention query uses `datetime('now', '-29 days')`** (`database.py`) — The 29-day cutoff is correct (FR24 stores 30 days), but the cutoff is computed at query time, not at event-creation time. Events near the boundary may be deleted slightly early or late depending on when the cleanup runs.
+
+### [MINOR]
+
+12. **`database.py` is 695 lines — the largest module** — All SQLite access lives here, which is good for maintainability, but the file could benefit from section comments separating schema, queries, and cleanup functions.
+
+13. **`clean_stale_state` deletes by `last_seen < cutoff`** (`database.py`) — Aircraft that were last seen inside a region but haven't been seen recently are cleaned up. This is correct (stale data shouldn't persist), but the cleanup is only for OUTSIDE aircraft. Inside-aircraft state persists indefinitely (until episode closes).
+
+14. **`_upsert_run` uses `COALESCE` for nullable fields** (`database.py`) — Correct pattern for optional fields like `regions_fetched`, `regions_successful`.
+
+15. **`replace_areas` transaction uses `DELETE + INSERT` pattern** (`database.py`) — The old areas are deleted and new ones inserted in a single transaction. This is correct for atomic replacement, but the `area_ids` in existing events would reference deleted area IDs. Events should be unaffected since they store area names/IDs as JSON, not as FK references.
+
+16. **`query_regions_for_poll` sorts deterministically** (`database.py`) — The `ORDER BY region_id` ensures consistent region ordering across polls. Good for determinism.
+
+17. **`get_state` returns a dict with JSON strings, not parsed values** (`database.py`) — The caller must parse `area_ids_json`, `area_names_json` manually. This is a deliberate design choice (avoids re-parsing on every call), but the inconsistency with `active_states()` (which parses) is the source of finding #1 in Batch 2.
+
+18. **`locks.py` lock files are placed next to the database** (`locks.py`) — `Path(db_path).parent / ".lock.{name}"` is a clean convention. Lock files are created with `os.open` (not `Path.touch`) so they don't exist until first acquisition.
+
+19. **No `VACUUM` or `ANALYZE` after large deletions** (`database.py`) — After cleaning stale state or FR24 events, the database file doesn't shrink. SQLite reuses pages, so the file grows but queries remain fast with indexes. For a PoC this is fine; production would benefit from periodic `VACUUM`.
+
+### [OK]
+
+20. **WAL mode + busy_timeout** (`database.py`) — Correct configuration for concurrent read/write access. `PRAGMA journal_mode=WAL` and `PRAGMA busy_timeout=5000` are standard best practices.
+
+21. **Additive migration pattern** (`database.py`) — `ALTER TABLE ... ADD COLUMN` with error suppression is the standard SQLite migration pattern. Correctly avoids destructive changes.
+
+22. **Event deduplication key** (`database.py`) — The `UNIQUE(episode_id, event_type)` constraint prevents duplicate events per episode. Clean and correct.
+
+23. **Cross-process lock implementation** (`locks.py`) — `fcntl.flock(LOCK_NB)` with `BlockingIOError` handling is the correct non-blocking pattern. No deadlock risk.
+
+24. **`replace_areas` preserves selection state** (`database.py`) — After replacing areas, existing selections are preserved via stable IDs. Correct per SPEC.
+
+25. **Query region deterministic IDs** (`database.py`) — SHA256-based IDs prevent churn during boundary updates.
+
+---
+
+## Batch 4: Provider System
+
+**Files**: `app/providers/base.py`, `app/providers/readsb.py`, `app/providers/providers.py`, `app/providers/__init__.py`
+
+### [CRITICAL]
+
+1. **Client errors (401/403/404) retry 3 times unnecessarily** (`providers.py:90-92`) — A non-429 4xx error (bad API key, wrong endpoint) falls through both `raise_for_status()` calls and enters the retry loop. Spec requires retry only for "429 and transient server failures." A permanent 401 should not be retried. Add `if response.status_code in (401, 403, 404): return None` before the retry loop.
+
+2. **Global hex merge loses `region_id` semantics** (`providers.py:263, 281-284`) — `observations` dict is keyed globally by hex across all regions. When the same aircraft appears in multiple overlapping regions, the surviving observation's `region_id` may not match where it was actually detected. Detection logic must not rely on `region_id` from the merged observation for per-region disappearance tracking. Verify that `process_missing` doesn't use the merged observation's `region_id`.
+
+3. **FR24 hex field mapping assumed without validation** (`providers.py:204-205`) — Code reads `raw.get("hex")`. If FR24 returns a different field name (e.g., `icao`, `address`), all FR24 observations silently disappear. No warning logged when hex is empty but lat/lon are valid. Add a warning log when `hex` is missing.
+
+### [IMPORTANT]
+
+4. **`api_request_delay_ms` fires after failures too** (`providers.py:288-289`) — Unconditional delay compounds with retry delays. Failed provider cycle time becomes `3 × (request_time + retry_delay + api_delay)`. Move the delay to only fire after successful requests.
+
+5. **FR24 `on_ground` with `None` altitude** (`providers.py:230`) — `altitude == 0` evaluates to `False` when `altitude` is `None` (since `None != 0`). This is asymmetrical with the readsb path which handles `None` explicitly. FR24 observations with `on_ground=True` but `None` altitude would not set `altitude=0`.
+
+6. **FR24 freshness relies on server clock accuracy** (`providers.py:216-218`) — No `seen_pos` equivalent; freshness computed from absolute timestamp. Server clock skew could accept/reject observations incorrectly. Consider adding a `seen_pos` check if FR24 provides it.
+
+7. **No duplicate region guard** (`providers.py:272-273`) — If the same region appears multiple times in the regions list, redundant HTTP requests are made silently. Deduplicate regions before the fetch loop.
+
+8. **`test_provider` tests only first region** (`providers.py:305`) — Only `regions[0]` is tested. Other regions may have connectivity issues. Test all regions or at least log which region was tested.
+
+9. **`_get_json` has dead code path** (`providers.py`) — The `except httpx.DecodingError` block is unreachable because the function already returns on non-2xx status. Clean up or document why it's kept.
+
+### [MINOR]
+
+10. **Callsign uppercasing undocumented** (`readsb.py:51`) — `.strip().upper()` normalization is a cross-provider contract. Add a brief comment.
+
+11. **`PROVIDER_INFO` dict is not validated against `ADAPTERS`** (`providers.py`) — If someone adds a provider adapter but forgets to add a `PROVIDER_INFO` entry, the settings UI would show an incomplete list. A startup assertion would catch this.
+
+12. **`fetch_all` returns `dict` with mixed value types** (`providers.py`) — The return type is `dict[str, list[AircraftObservation] | set[str]]`. Type hints could be clearer with a TypedDict or dataclass.
+
+13. **FR24 bearer token concatenated from parts** (`providers.py`) — The token is assembled from config parts. If any part is empty, the bearer header would be malformed. Add a validation check.
+
+### [OK]
+
+14. **NaN-safe number parser** (`readsb.py:8-12`) — `result == result` is a clean dependency-free NaN rejection pattern.
+
+15. **Robust timestamp normalization** (`readsb.py:21-22`) — Handles both millisecond and epoch-second `response_now` correctly.
+
+16. **ICAO hex normalization** (`readsb.py:23`) — Strips `~` prefix, lowercases, rejects empty strings. Correct for cross-provider merging.
+
+17. **Proper backoff and retry** (`providers.py`) — `_retry_delay` correctly parses `Retry-After` as both integer and HTTP-date, caps at 30s, falls back to exponential backoff.
+
+18. **Provider failure never counted as disappearance** (`providers.py:279, 291-295`) — `successful_by_region` only populated on success; `fully_successful_regions` requires ALL providers succeeded.
+
+19. **Request tracking** (`providers.py:96-101`) — `record_provider_request` called on both success and failure. Accurate accounting.
+
+20. **API key never logged** — No logger call includes key contents. Security best practice upheld.
+
+21. **Clean public API** (`__init__.py`) — Exports exactly the intended symbols; no internal helpers leak.
