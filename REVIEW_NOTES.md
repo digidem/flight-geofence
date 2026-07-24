@@ -457,3 +457,110 @@
 24. **Named volumes for data persistence** — Four named volumes with correct separation of concerns.
 
 25. **Makefile targets match CI pipeline** — `make check` runs compileall + pytest.
+
+---
+
+## Batch 9: Tests & Documentation
+
+**Files**: `tests/conftest.py`, `tests/test_core.py`, `README.md`, `SPEC.md`, `RESEARCH.md`, `RESEARCH_2.md`, `VALIDATION.md`, `AUDIT.md`, `LINKS_REPORT.txt`
+
+### [CRITICAL]
+
+1. **No tests for disappearance events (`process_missing`)** — The second major detection pathway has zero test coverage. SPEC lines 121-128 define specific requirements: minimum inside-observation count, altitude ceiling, absence from successful coverage cycles, one event per episode. None are verified. This is the most important coverage gap.
+
+2. **No tests for email delivery and retry logic** — `send_event_email()` (Resend/SMTP/console), `update_event_email()` (1/5/20 min backoff), `retry_email_queue()` (phase-gated retry), daily email cap — all untested. SPEC lines 144-146 require bounded retry with increasing delays and phase-gating.
+
+3. **No tests for nonmonotonic observation rejection** — `detection.py:171-172` (`if last_seen and observation.observed_at <= last_seen: return 0`) is a critical data-integrity guard. SPEC line 134 explicitly requires it. Zero coverage.
+
+4. **VALIDATION.md test count is wrong** — Line 7 claims "Eighteen automated unit/integration tests pass" but there are actually 23 test functions. Documentation drift.
+
+### [IMPORTANT]
+
+5. **No tests for stale state cleanup** — `cleanup_stale_states()` and `cleanup_provider_events()` called during every poll cycle have zero coverage. SPEC line 155 requires it.
+
+6. **No tests for FR24 30-day event deletion** — SPEC line 156 requires it. Code exists but untested.
+
+7. **No test for Airplanes.live daily cap enforcement** — SPEC line 92 requires it. Untested.
+
+8. **No test for episode deduplication** — SPEC line 176 requires it. Relies on UNIQUE constraint only.
+
+9. **No test for multi-provider disappearance semantics** — SPEC lines 94-98 require fully-successful-region tracking. AGENTS.md explicitly requires this to be tested.
+
+10. **No test for scheduled-airline suppression of disappearance** — `detection.py:354-355` skips airlines in `process_missing`. Untested.
+
+11. **FR24 aircraft type URL pattern may be incorrect** (`LINKS_REPORT.txt:59`) — Links to `/data/aircraft/{type}` but FR24's actual type pages are at `/data/aircraft-type/{type}`. Should be verified.
+
+12. **RESEARCH_2.md references contain `utm_source=chatgpt.com` tracking parameters** — Lines 309-320. Should be stripped before publication.
+
+### [MINOR]
+
+13. **`test_stop_timer_does_not_include_high_speed_observation` is incomplete** (`test_core.py:158-176`) — Only verifies high-speed first observation doesn't start timer. Doesn't test timer reset after high-speed movement mid-episode.
+
+14. **`test_outside_requires_confirmation_before_closing_episode` only tests closure** (`test_core.py:179-197`) — Doesn't verify the negative case (single outside observation does NOT close).
+
+15. **Temp directory never cleaned up** (`conftest.py:11`) — `tempfile.mkdtemp()` creates dirs that accumulate across test runs.
+
+16. **8 out of 17 SPEC acceptance criteria lack dedicated test coverage** — A test-to-SPEC traceability matrix would help identify gaps.
+
+### [OK]
+
+17. **Test isolation is well-structured** (`conftest.py`) — Environment defaults set before imports, `clean_database` autouse fixture clears all tables.
+
+18. **MockTransport used consistently** — All network-touching tests use `httpx.MockTransport`. No live API calls. Satisfies AGENTS.md.
+
+19. **Detection parameters in README match implementation** — All 6 configurable parameters correctly documented.
+
+20. **Security model documentation is accurate** — All 13 security features listed match implementation.
+
+21. **Source fallback chain matches implementation** — FUNAI → fallback, ICMBio → CNUC → RAISG → fallback.
+
+22. **Known limitations are honest and complete** — Correctly acknowledges signal gaps, sparse coverage, heuristic classification, upstream changes, and PoC status.
+
+23. **AUDIT.md is accurate** — All v0.4 corrections and improvements match actual codebase.
+
+24. **RESEARCH.md is accurate** — All URLs and provider descriptions match implementation.
+
+25. **LINKS_REPORT.txt is thorough** — Honest about partial failures, recommends quarterly review.
+
+---
+
+## Final Summary
+
+### Totals Across All 9 Batches
+
+| Severity | Count |
+|----------|-------|
+| CRITICAL | 14 |
+| IMPORTANT | 58 |
+| MINOR | 54 |
+| OK (positive) | 87 |
+
+### Top 10 Priority Fixes
+
+1. **Create `.gitignore`** — Secrets and runtime data have zero git-level protection (Batch 8)
+2. **Fix XSS in HTML emails** — `latitude`/`longitude` unescaped in `emailer.py` (Batch 6)
+3. **Fix XSS in frontend telemetry** — `altitude_ft`/`ground_speed_kt` unescaped in `app.js` (Batch 7)
+4. **Fix territories-only record schema mismatch** — Will crash `replace_areas()` when all conservation sources fail (Batch 5)
+5. **Move CI secrets to `${{ secrets.* }}`** — Hardcoded values leak to forks (Batch 8)
+6. **Stop retrying permanent 4xx errors** — 401/403/404 should not retry in provider fetch (Batch 4)
+7. **Add disappearance event tests** — Zero coverage on second-most-critical detection path (Batch 9)
+8. **Add email retry tests** — Zero coverage on safety-critical email delivery (Batch 9)
+9. **Fix `Resend-Idempotency-Key` leaking into SMTP** — API-specific header on shared message object (Batch 6)
+10. **Fix timezone bug in frontend** — `formatTime` ignores configured timezone (Batch 7)
+
+### Architecture Strengths
+
+- Clean separation of concerns across modules
+- Consistent `MockTransport` usage in tests (no network calls)
+- Comprehensive security hardening (auth, CSRF, encryption, container)
+- Well-structured spatial index and detection state machine
+- Proper SQLite WAL + cross-process locking
+- Thorough boundary-sync fallback chain with ZIP safety
+- Dependency-free frontend with correct `escapeHtml` implementation
+
+### Systemic Risks
+
+- **Test coverage gap**: Disappearance events and email retry have zero test coverage — regressions would go undetected
+- **Documentation drift**: VALIDATION.md test count wrong, RESEARCH_2.md has tracking parameters
+- **Schema fragility**: Multiple code paths produce different record shapes for the same data
+- **Frontend timezone**: Configured timezone is never applied to displayed times
