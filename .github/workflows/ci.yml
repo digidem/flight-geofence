@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+      - name: Compile and test
+        env:
+          ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+          APP_SECRET_KEY: ${{ secrets.CI_APP_SECRET_KEY }}
+          BOUNDARY_SYNC_ENABLED: 'false'
+          SCHEDULER_INITIAL_DELAY_SECONDS: '9999'
+          TRUSTED_HOSTS: testserver,localhost,127.0.0.1
+          DATABASE_PATH: /tmp/flight-geofence-ci.db
+          DOWNLOAD_DIR: /tmp/flight-geofence-downloads
+        run: |
+          python -m compileall -q app tests
+          python -m pytest -q
+      - name: Check frontend syntax
+        run: node --check app/static/app.js
+      - name: Validate Compose
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Build container
+        run: docker build --pull --tag flight-geofence-alerts:ci .
