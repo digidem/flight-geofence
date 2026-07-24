@@ -1,0 +1,14 @@
+.env
+*.db
+*.zip
+*.sha256
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+coverage.xml
+htmlcov/
+data/
+*.pyc
+.mimocode/

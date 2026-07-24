@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Flight Geofence Alerts</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="login-screen" class="login-screen">
+    <form id="login-form" class="login-card">
+      <p class="eyebrow" data-i18n="login_title">Protected monitoring interface</p>
+      <h1>Flight Geofence Alerts</h1>
+      <p data-i18n="login_subtitle">Use the password configured as <code>ADMIN_PASSWORD</code>.</p>
+      <label><span data-i18n="login_password_label">Password</span><input id="login-password" type="password" autocomplete="current-password" required></label>
+      <button class="button primary" type="submit" data-i18n="login_button">Log in</button>
+      <div id="login-error" class="error"></div>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <div><p class="eyebrow" data-i18n="dashboard_subtitle">Monitoramento territorial · PoC com dados reais</p><h1>Flight Geofence Alerts</h1></div>
+      <div class="header-actions"><span id="phase-badge" class="badge">—</span><button id="logout" class="button ghost" data-i18n="logout_button">Sair</button></div>
+    </header>
+    <nav class="tabs">
+      <button class="tab active" data-view="dashboard" data-i18n="nav_dashboard">Painel</button>
+      <button class="tab" data-view="areas" data-i18n="nav_areas">Áreas protegidas</button>
+      <button class="tab" data-view="events" data-i18n="nav_events">Revisar eventos</button>
+      <button class="tab" data-view="settings" data-i18n="nav_settings">Configurações</button>
+    </nav>
+
+    <main>
+      <section id="view-dashboard" class="view active">
+        <div id="warnings"></div>
+        <div id="metrics" class="metric-grid"></div>
+        <div class="grid two">
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_current_phase">Fase atual</p><h2 data-i18n="dashboard_three_phase">Fluxo de três fases</h2></div></div>
+            <div class="phase-grid">
+              <div class="phase-card"><strong>1 · <span data-i18n="phase_shadow">Sombra</span></strong><p data-i18n="shadow_desc">APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.</p></div>
+              <div class="phase-card"><strong>2 · <span data-i18n="phase_review">Revisão</span></strong><p data-i18n="review_desc">Classifique eventos como úteis, ruído ou incerto e ajuste limiares e áreas selecionadas.</p></div>
+              <div class="phase-card"><strong>3 · <span data-i18n="phase_live">Ao vivo</span></strong><p data-i18n="live_desc">Apenas eventos de parada provável e desaparecimento acionam a entrega de e-mail configurada.</p></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_actions">Ações</p><h2 data-i18n="dashboard_operations">Operações</h2></div></div>
+            <div class="actions">
+              <button id="sync-now" class="button secondary" data-i18n="sync_boundaries">Sincronizar limites oficiais</button>
+              <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
+              <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
+              <button id="refresh" class="button ghost dark" data-i18n="refresh_status">Atualizar status</button>
+              <div id="action-result" class="muted"></div>
+            </div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_recent">Sinais recentes</p><h2 data-i18n="dashboard_events">Eventos suspeitos</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th data-i18n="col_time">Horário</th><th data-i18n="col_signal">Sinal</th><th data-i18n="col_aircraft">Aeronave</th><th data-i18n="col_areas">Áreas</th><th data-i18n="col_telemetry">Telemetria</th><th data-i18n="col_phase">Fase</th><th data-i18n="col_review">Revisão</th></tr></thead><tbody id="dashboard-events"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="view-areas" class="view">
+        <article class="panel">
+          <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="areas_subtitle">Dados oficiais FUNAI + CNUC</p><h2 data-i18n="areas_title">Selecionar áreas monitoradas</h2></div>
+            <div class="filters"><input id="area-search" data-i18n="areas_search" placeholder="Buscar nome, estado ou fase"><select id="area-category"><option value="" data-i18n="areas_all_types">Todos os tipos</option><option value="indigenous_territory" data-i18n="areas_indigenous">Territórios indígenas</option><option value="conservation_unit" data-i18n="areas_conservation">Unidades de conservação</option></select><select id="area-selected"><option value="" data-i18n="areas_all">Todos</option><option value="true" data-i18n="areas_selected">Selecionados</option><option value="false" data-i18n="areas_not_selected">Não selecionados</option></select><button id="area-filter" class="button secondary" data-i18n="areas_filter">Filtrar</button></div>
+          </div>
+          <div class="bulk"><button id="select-visible" class="button primary" data-i18n="areas_select_visible">Selecionar visíveis</button><button id="deselect-visible" class="button ghost dark" data-i18n="areas_deselect_visible">Desselecionar visíveis</button><button id="select-all-filtered" class="button secondary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
+          <div class="table-wrap"><table><thead><tr><th data-i18n="col_monitor">Monitorar</th><th data-i18n="col_name">Nome</th><th data-i18n="col_type">Tipo</th><th data-i18n="col_state">Estado</th><th data-i18n="col_phase_category">Fase/Categoria</th><th data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="view-events" class="view">
+        <article class="panel">
+          <div class="panel-header"><div><p class="eyebrow" data-i18n="review_subtitle">Evidência de calibração</p><h2 data-i18n="review_title">Revisar eventos detectados</h2></div><div class="filters"><select id="review-filter"><option value="" data-i18n="review_all">Todas as revisões</option><option value="unreviewed" data-i18n="review_unreviewed">Não revisados</option><option value="useful" data-i18n="review_useful">Úteis</option><option value="noise" data-i18n="review_noise">Ruído</option><option value="uncertain" data-i18n="review_uncertain">Incertos</option></select><button id="review-refresh" class="button secondary" data-i18n="review_refresh">Atualizar</button></div></div>
+          <div id="review-list" class="review-list"></div>
+        </article>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="grid two">
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_workflow">Fluxo de trabalho</p><h2 data-i18n="settings_phase_providers">Fase e fornecedores</h2></div></div><form id="settings-core" class="form-grid">
+            <label data-i18n="settings_operating_phase">Fase operacional<select name="operating_phase"><option value="shadow" data-i18n="phase_shadow">Sombra</option><option value="review" data-i18n="phase_review">Revisão</option><option value="live" data-i18n="phase_live">Ao vivo</option></select></label>
+            <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> ADSB.lol — free/open</label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> Airplanes.live — free non-commercial</label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> ADS-B Exchange — paid</label><label class="check"><input type="checkbox" name="flight_providers" value="flightradar24"> Flightradar24 — paid credits</label></fieldset>
+            <label data-i18n="settings_poll_interval">Intervalo de consulta (segundos)<input name="poll_interval_seconds" type="number" min="30" max="86400"></label>
+            <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar fluxo de trabalho</button><div class="form-result"></div>
+          </form></article>
+
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_secrets">Segredos</p><h2 data-i18n="settings_api_keys">Chaves de API</h2></div></div><form id="settings-keys" class="form-grid">
+            <label data-i18n="settings_fr24_key">Token Flightradar24<input name="flightradar24_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+            <label data-i18n="settings_adsb_key">Chave ADS-B Exchange<input name="adsbexchange_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+            <label data-i18n="settings_resend_key">Chave API Resend<input name="resend_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+            <button class="button primary" type="submit" data-i18n="settings_save_keys">Salvar chaves com segurança</button><div class="form-result"></div>
+          </form></article>
+
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_notifications">Notificações</p><h2 data-i18n="settings_email">E-mail</h2></div></div><form id="settings-email" class="form-grid">
+            <label data-i18n="settings_email_provider">Provedor de e-mail<select name="email_provider"><option value="console" data-i18n="settings_console">Pré-visualização no console</option><option value="resend">Resend</option><option value="smtp">SMTP</option></select></label>
+            <label data-i18n="settings_recipients">Destinatários, separados por vírgula<input name="alert_recipients" type="text"></label>
+            <label data-i18n="settings_sender">Remetente<input name="email_from" type="text"></label>
+            <label data-i18n="settings_smtp_host">Host SMTP<input name="smtp_host" type="text"></label><label data-i18n="settings_smtp_port">Porta SMTP<input name="smtp_port" type="number"></label><label data-i18n="settings_smtp_user">Usuário SMTP<input name="smtp_username" type="text"></label><label data-i18n="settings_smtp_pass">Senha SMTP<input name="smtp_password" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label><label class="check"><input name="smtp_starttls" type="checkbox"> <span data-i18n="settings_smtp_starttls">Usar STARTTLS</span></label>
+            <button class="button primary" type="submit" data-i18n="settings_save_email">Salvar configurações de e-mail</button><div class="form-result"></div>
+          </form></article>
+
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_detection">Detecção</p><h2 data-i18n="settings_noise">Controles de ruído</h2></div></div><form id="settings-thresholds" class="form-grid compact">
+            <label data-i18n="settings_stop_obs">Observações para parada<input name="min_inside_observations_for_stop" type="number" min="2"></label><label data-i18n="settings_stop_duration">Duração mínima da parada (segundos)<input name="stop_min_duration_seconds" type="number" min="30"></label><label data-i18n="settings_stationary_radius">Raio estacionário (metros)<input name="stationary_radius_meters" type="number" min="50"></label><label data-i18n="settings_max_stop_speed">Velocidade máxima de parada (kt)<input name="stop_max_speed_kt" type="number" min="1"></label><label data-i18n="settings_disappear_obs">Observações para desaparecimento<input name="min_inside_observations_for_disappearance" type="number" min="2"></label><label data-i18n="settings_disappear_polls">Pollings bem-sucedidos para desaparecimento<input name="disappear_after_successful_polls" type="number" min="1"></label><label data-i18n="settings_disappear_alt">Altitude máxima de desaparecimento (ft)<input name="disappear_max_altitude_ft" type="number" min="0"></label><label data-i18n="settings_outside_obs">Observações externas para fechar episódio<input name="outside_confirmation_observations" type="number" min="1" max="10"></label><label data-i18n="settings_max_emails">Limite diário de e-mails<input name="max_emails_per_day" type="number" min="1"></label>
+            <button class="button primary" type="submit" data-i18n="settings_save_thresholds">Salvar limiares</button><div class="form-result"></div>
+          </form></article>
+
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_display">Display</p><h2 data-i18n="settings_timezone">Fuso horário</h2></div></div><form id="settings-display" class="form-grid">
+            <label data-i18n="settings_language">Idioma<select id="settings-language" name="language"><option value="pt">Português</option><option value="en">English</option></select></label>
+            <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo">Horário de Brasília (UTC-3)</option><option value="America/Manaus">Manaus (UTC-4)</option><option value="America/Belem">Belém (UTC-3)</option><option value="America/Rio_Branco">Rio Branco (UTC-5)</option><option value="America/Noronha">Fernando de Noronha (UTC-2)</option></select></label>
+            <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar</button><div class="form-result"></div>
+          </form></article>
+        </div>
+        <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
