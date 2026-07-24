@@ -325,3 +325,135 @@
 28. **Phase, review status, and category translations complete** — All UI-facing strings covered.
 
 29. **Consistent snake_case key naming** throughout i18n dict.
+
+---
+
+## Batch 7: Frontend
+
+**Files**: `app/static/index.html`, `app/static/app.js`, `app/static/styles.css`
+
+### [CRITICAL]
+
+1. **XSS via unescaped telemetry values** (`app.js:426`) — `eventRow()` interpolates `event.altitude_ft` and `event.ground_speed_kt` directly into the template string without escaping. If a compromised provider returns a string like `<img src=x onerror=alert(1)>` for `altitude_ft`, this is reflected XSS. Wrap both values in `escapeHtml()`.
+
+2. **`formatTime` ignores the configured timezone** (`app.js:340-364`) — Creates a `Date` and calls `.getHours()` / `.getMinutes()` which use the browser's local timezone. The `appState.timezone` setting and `timezoneOffsets` map are never used. A user in UTC+3 viewing Brazilian data sees incorrect times. SPEC violation.
+
+3. **Hardcoded Portuguese "às" in `formatTime`** (`app.js:361`) — Template literal uses `às` regardless of language. English mode should show `at`. Should use a translated key or conditional.
+
+### [IMPORTANT]
+
+4. **Missing i18n on "Display" eyebrow** (`index.html:109`) — The `<p class="eyebrow">Display</p>` has no `data-i18n` attribute. All other section eyebrows have one.
+
+5. **`<select>` elements missing IDs** (`index.html:110-111`) — Language and timezone selects have `name` but no `id`. In `app.js:586-590`, `$("#settings-language")` and `$("#settings-timezone")` always return `null`, making `applyTranslations()` unable to sync dropdown values after language switch.
+
+6. **Dead code: `timezoneOffsets` map** (`app.js:272-279`) — Defined but never referenced. Either implement timezone logic or remove.
+
+7. **`monthNames` arrays are identical for pt/en** (`app.js:350-352`) — Both are `["01", "02", ..., "12"]` — zero-padded numbers, not translated month names. Misleading variable name.
+
+8. **No error handling in tab navigation** (`app.js:679-688`) — Click handler `await`s `loadAreas()`, `loadReviews()`, `loadSettings()` with no try/catch. API failures propagate unhandled.
+
+9. **No error handling in logout** (`app.js:674-677`) — If `api("/api/auth/logout")` fails, `showLogin()` is never called. Should use try/finally.
+
+10. **Password fields sent as empty strings on "Save keys"** (`app.js:707`) — `formPayload()` collects all named fields including blank password inputs. The frontend should omit empty password fields for defense-in-depth.
+
+### [MINOR]
+
+11. **Review notes "Notes" label not translated** (`app.js:501`) — Hardcoded English. Should use `data-i18n`.
+
+12. **Provider test "Test" button text not translated** (`app.js:617`) — Hardcoded English.
+
+13. **Inline styles on generated links** (`app.js:415, 419, 424, 496, 499`) — Multiple `style="color:var(--forest)"` on dynamically created links. Use CSS classes instead to avoid CSP `style-src` conflicts.
+
+14. **`escapeHtml` doesn't escape backticks or `${}`** (`app.js:293`) — Fine for HTML context, but worth documenting it's HTML-only.
+
+15. **No `:focus-visible` styles** (`styles.css`) — WCAG 2.1 SC 2.4.7 requires visible focus indicators. Keyboard-only navigation is invisible.
+
+16. **No `prefers-reduced-motion` media query** (`styles.css`) — Should respect reduced-motion preference.
+
+17. **`font-weight: 850` on `.metric-value`** — Non-standard. Use 800 or 900.
+
+### [OK]
+
+18. **`escapeHtml` covers the 5 essential HTML entities** — `&`, `<`, `>`, `"`, `'` — correct for preventing XSS.
+
+19. **CSRF token handling is correct** (`app.js:310-327`) — Sent via `X-CSRF-Token` header for mutations except login. Stored in memory only. Cleared on logout.
+
+20. **`credentials: "same-origin"`** (`app.js:317`) — Correct cookie handling.
+
+21. **401 auto-redirect to login** (`app.js:324`) — Session expiry handled gracefully.
+
+22. **`formPayload` properly handles checkbox lists** (`app.js:703-706`) — `flight_providers` excluded from generic serialization and collected separately as an array.
+
+23. **HTML escaping applied to all other user/provider data** — Area names, event fields, warnings, provider info, review notes all go through `escapeHtml()`.
+
+24. **CSS custom properties** — Well-structured design token system.
+
+25. **Responsive breakpoints** — `@media(max-width:900px)` and `@media(max-width:600px)` handle grid collapse.
+
+26. **No external dependencies** — Pure CSS and vanilla JS. Complies with AGENTS.md.
+
+27. **`init()` catches top-level errors** (`app.js:721-724`) — Unhandled init failures show login screen with error.
+
+---
+
+## Batch 8: Infrastructure & DevOps
+
+**Files**: `Dockerfile`, `docker-compose.yml`, `Makefile`, `.github/workflows/ci.yml`, `requirements.txt`, `requirements-dev.txt`, `pyproject.toml`, `.env.example`, `Caddyfile`, `scripts/backup.sh`, `.dockerignore`, `.gitignore`
+
+### [CRITICAL]
+
+1. **`.gitignore` file does not exist** — `.env` (containing secrets), `*.db` files, `.venv/`, `__pycache__/`, `data/` directory, and boundary downloads (`*.zip`) are all unprotected from accidental commits. The `.dockerignore` partially compensates for Docker builds, but git commits have zero protection. Create a `.gitignore` immediately.
+
+2. **CI test secrets hardcoded in workflow** (`.github/workflows/ci.yml:24-25`) — `ADMIN_PASSWORD` and `APP_SECRET_KEY` are hardcoded in the workflow file. These appear in the repo's file contents and in any fork. Use `${{ secrets.CI_ADMIN_PASSWORD }}` and `${{ secrets.CI_APP_SECRET_KEY }}`.
+
+### [IMPORTANT]
+
+3. **Caddy service lacks `cap_drop: ALL`** (`docker-compose.yml:39-60`) — The `caddy` service has `security_opt: no-new-privileges:true` but does NOT have `cap_drop: ALL`. Inconsistent with the hardened `flight-monitor` service. Caddy needs `NET_BIND_SERVICE` to bind ports 80/443 — add it back after dropping all.
+
+4. **No ruff enforcement in CI or Makefile** — `pyproject.toml` configures ruff (lines 6-12) but the Makefile has no lint target and CI never runs ruff. The linting config exists but is never enforced. Add `make lint` and a CI step.
+
+5. **Caddyfile missing security headers** (`Caddyfile:5-8`) — Has `Strict-Transport-Security` and removes `Server`, but missing `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Content-Security-Policy`. For a security-sensitive dashboard, these matter.
+
+6. **Backup script lacks integrity check** (`scripts/backup.sh:12-24`) — Creates backup via `source.backup(target)` but never verifies the result. A corrupted database silently produces a corrupt backup. Add `PRAGMA integrity_check` after backup.
+
+7. **`--no-server-header` is not a valid uvicorn CLI flag** (`Dockerfile:33`) — Uvicorn does not have this flag. This will cause a startup error or be silently ignored.
+
+8. **`HOME=/tmp` in Dockerfile is a shared-directory risk** (`Dockerfile:11-12`) — Makes `/tmp` the default working directory for any subprocess. While the container uses `read_only: true` + tmpfs at `/tmp`, any tool writing to `$HOME/.local/share` hits the tmpfs. Better: use `/home/app`.
+
+### [MINOR]
+
+9. **`permissions` service grants `DAC_OVERRIDE`** (`docker-compose.yml:62-82`) — Broad capability. `DAC_READ_SEARCH` might suffice if only `chown` is needed.
+
+10. **No hash pinning on requirements** — Pinned by version but not by hash. Acceptable for a PoC.
+
+11. **No vulnerability scanning in CI** — Consider adding `pip-audit` or `safety`.
+
+12. **No backup rotation** — Creates timestamped backups but never prunes old ones.
+
+13. **Missing `data/` and `.github/` in `.dockerignore`** — Would be copied unnecessarily during builds.
+
+14. **CI doesn't run ruff** — `pyproject.toml` configures it but CI never invokes it.
+
+15. **`timeout-minutes: 30` may be excessive** — 20 minutes would catch hangs faster.
+
+16. **`actions/checkout@v4` without SHA pinning** — Standard for GitHub-maintained actions, but SHA pinning prevents supply-chain attacks.
+
+### [OK]
+
+17. **Dockerfile hardening** — Non-root user (UID 10001), nologin shell, HEALTHCHECK present.
+
+18. **Compose flight-monitor hardening** — `read_only: true`, `cap_drop: ALL`, `no-new-privileges`, `pids_limit: 256`, bounded logs, health check, `stop_grace_period: 30s`.
+
+19. **CI covers all required checks** — compileall, pytest, node --check, docker compose config, docker build.
+
+20. **All production dependencies pinned with `==`** — Reproducible builds.
+
+21. **Clean `requirements-dev.txt` inheritance** — `-r requirements.txt` + only pytest added.
+
+22. **pytest config correct** — `pythonpath = ["."]`, `testpaths = ["tests"]`, `addopts = "-q --strict-markers"`.
+
+23. **`.env.example` comprehensive** — 89 lines with clear comments, safe defaults, `replace-with-*` placeholders.
+
+24. **Named volumes for data persistence** — Four named volumes with correct separation of concerns.
+
+25. **Makefile targets match CI pipeline** — `make check` runs compileall + pytest.
