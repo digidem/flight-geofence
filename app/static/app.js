@@ -1,280 +1,18 @@
-// Portuguese translations (default)
-const translations = {
+// Minimal fallback translations (used before /api/i18n loads)
+const fallbackTranslations = {
   pt: {
-    nav_dashboard: "Painel",
-    nav_areas: "Áreas protegidas",
-    nav_events: "Revisar eventos",
-    nav_settings: "Configurações",
     login_title: "Interface de monitoramento protegida",
     login_subtitle: "Use a senha configurada como",
     login_button: "Entrar",
     login_password_label: "Senha",
-    logout_button: "Sair",
-    phase_shadow: "Sombra",
-    phase_review: "Revisão",
-    phase_live: "Ao vivo",
-    dashboard_subtitle: "Monitoramento territorial · PoC com dados reais",
-    dashboard_current_phase: "Fase atual",
-    dashboard_three_phase: "Fluxo de três fases",
-    shadow_desc: "APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.",
-    review_desc: "Classifique eventos como úteis, ruído ou incerto e ajuste limiares e áreas selecionadas.",
-    live_desc: "Apenas eventos de pouso provável e desaparecimento acionam a entrega de e-mail configurada.",
-    dashboard_actions: "Ações",
-    dashboard_operations: "Operações",
-    sync_boundaries: "Sincronizar limites oficiais",
-    run_poll: "Executar consulta de voo agora",
-    test_email: "Testar entrega de e-mail",
-    refresh_status: "Atualizar status",
-    action_syncing: "Baixando e processando limites oficiais…",
-    action_polling: "Consultando fornecedores de voo…",
-    action_testing_email: "Testando entrega de e-mail…",
-    dashboard_recent: "Sinais recentes",
-    dashboard_events: "Eventos suspeitos",
-    no_events: "Nenhum evento suspeito ainda.",
-    metric_areas: "Áreas protegidas",
-    metric_regions: "Regiões de consulta",
-    metric_events: "Eventos",
-    metric_last_poll: "Última consulta",
-    metric_healthy: "Saudável",
-    metric_not_ready: "Não pronto",
-    metric_no_poll: "Nenhuma consulta ainda",
-    metric_reviewed: "revisados úteis",
-    metric_estimated: "requisições estimadas/dia",
-    metric_downloaded: "baixados",
-    col_time: "Horário",
-    col_signal: "Sinal",
-    col_aircraft: "Aeronave",
-    col_areas: "Áreas",
-    col_telemetry: "Telemetria",
-    col_phase: "Fase",
-    col_review: "Revisão",
-    signal_stop: "Possível pouso",
-    signal_disappeared: "Desapareceu",
-    event_probable_stop: "Possível Pouso",
-    event_disappearance: "Desaparecimento",
-    class_scheduled_airline: "Companhia aérea",
-    class_unknown_candidate: "Candidato desconhecido",
-    class_non_airline_candidate: "Candidato não-companhia",
-    category_indigenous_territory: "Território indígena",
-    category_conservation_unit: "Unidade de conservação",
-    areas_subtitle: "Dados oficiais FUNAI + CNUC",
-    areas_title: "Selecionar áreas monitoradas",
-    areas_search: "Buscar nome, estado ou fase",
-    areas_all_types: "Todos os tipos",
-    areas_indigenous: "Territórios indígenas",
-    areas_conservation: "Unidades de conservação",
-    areas_all: "Todos",
-    areas_selected: "Selecionados",
-    areas_not_selected: "Não selecionados",
-    areas_filter: "Filtrar",
-    areas_select_visible: "Selecionar visíveis",
-    areas_deselect_visible: "Desselecionar visíveis",
-    areas_select_filtered: "Selecionar todos filtrados",
-    areas_matching: "áreas correspondentes",
-    col_monitor: "Monitorar",
-    col_name: "Nome",
-    col_type: "Tipo",
-    col_state: "Estado",
-    col_phase_category: "Fase/Categoria",
-    col_source: "Fonte",
-    areas_no_data: "Nenhuma área encontrada. Execute a sincronização de limites primeiro.",
-    review_subtitle: "Evidência de calibração",
-    review_title: "Revisar eventos detectados",
-    review_all: "Todas as revisões",
-    review_unreviewed: "Não revisados",
-    review_useful: "Úteis",
-    review_noise: "Ruído",
-    review_uncertain: "Incertos",
-    review_refresh: "Atualizar",
-    review_save: "Salvar revisão",
-    review_no_events: "Nenhum evento correspondente.",
-    settings_workflow: "Fluxo de trabalho",
-    settings_phase_providers: "Fase e fornecedores",
-    settings_operating_phase: "Fase operacional",
-    settings_flight_providers: "Fornecedores de voo",
-    settings_poll_interval: "Intervalo de consulta (segundos)",
-    settings_save_workflow: "Salvar fluxo de trabalho",
-    settings_saved: "Salvo.",
-    settings_secrets: "Segredos",
-    settings_api_keys: "Chaves de API",
-    settings_fr24_key: "Token Flightradar24",
-    settings_adsb_key: "Chave ADS-B Exchange",
-    settings_resend_key: "Chave API Resend",
-    settings_placeholder: "Deixe em branco para manter existente",
-    settings_save_keys: "Salvar chaves com segurança",
-    settings_notifications: "Notificações",
-    settings_email: "E-mail",
-    settings_email_provider: "Provedor de e-mail",
-    settings_console: "Pré-visualização no console",
-    settings_recipients: "Destinatários, separados por vírgula",
-    settings_sender: "Remetente",
-    settings_smtp_host: "Host SMTP",
-    settings_smtp_port: "Porta SMTP",
-    settings_smtp_user: "Usuário SMTP",
-    settings_smtp_pass: "Senha SMTP",
-    settings_smtp_starttls: "Usar STARTTLS",
-    settings_save_email: "Salvar configurações de e-mail",
-    settings_detection: "Detecção",
-    settings_noise: "Controles de ruído",
-    settings_stop_obs: "Observações para pouso",
-    settings_stop_duration: "Duração mínima do pouso (segundos)",
-    settings_stationary_radius: "Raio estacionário (metros)",
-    settings_max_stop_speed: "Velocidade máxima de pouso (kt)",
-    settings_disappear_obs: "Observações para desaparecimento",
-    settings_disappear_polls: "Pollings bem-sucedidos para desaparecimento",
-    settings_disappear_alt: "Altitude máxima de desaparecimento (ft)",
-    settings_outside_obs: "Observações externas para fechar episódio",
-    settings_max_emails: "Limite diário de e-mails",
-    settings_save_thresholds: "Salvar limiares",
-    settings_connectivity: "Conectividade",
-    settings_test_providers: "Testar fornecedores",
-    settings_testing: "Testando…",
-    settings_aircraft_returned: "aeronaves retornadas",
-    settings_timezone: "Fuso horário",
-    timezone_label: "Fuso horário do painel",
-    settings_language: "Idioma",
-    settings_display: "Exibição",
-    time_at: " às ",
-    review_notes: "Notas",
-    test_button: "Testar",
+    app_title: "Flight Geofence Alerts",
   },
   en: {
-    nav_dashboard: "Dashboard",
-    nav_areas: "Protected areas",
-    nav_events: "Review events",
-    nav_settings: "Settings",
     login_title: "Protected monitoring interface",
     login_subtitle: "Use the password configured as",
     login_button: "Log in",
     login_password_label: "Password",
-    logout_button: "Log out",
-    phase_shadow: "Shadow",
-    phase_review: "Review",
-    phase_live: "Live",
-    dashboard_subtitle: "Territorial monitoring · real-data PoC",
-    dashboard_current_phase: "Current phase",
-    dashboard_three_phase: "Three-phase workflow",
-    shadow_desc: "Real APIs and official boundaries. Events are stored, but no external alert is sent.",
-    review_desc: "Classify events as useful, noise, or uncertain and adjust thresholds and selected areas.",
-    live_desc: "Only probable landing and disappearance events trigger configured email delivery.",
-    dashboard_actions: "Actions",
-    dashboard_operations: "Operations",
-    sync_boundaries: "Sync official boundaries",
-    run_poll: "Run flight poll now",
-    test_email: "Test email delivery",
-    refresh_status: "Refresh status",
-    action_syncing: "Downloading and processing official boundaries…",
-    action_polling: "Polling flight providers…",
-    action_testing_email: "Testing email delivery…",
-    dashboard_recent: "Recent signals",
-    dashboard_events: "Suspicious events",
-    no_events: "No suspicious events yet.",
-    metric_areas: "Protected areas",
-    metric_regions: "Query regions",
-    metric_events: "Events",
-    metric_last_poll: "Last poll",
-    metric_healthy: "Healthy",
-    metric_not_ready: "Not ready",
-    metric_no_poll: "No poll yet",
-    metric_reviewed: "reviewed useful",
-    metric_estimated: "estimated requests/day",
-    metric_downloaded: "downloaded",
-    col_time: "Time",
-    col_signal: "Signal",
-    col_aircraft: "Aircraft",
-    col_areas: "Areas",
-    col_telemetry: "Telemetry",
-    col_phase: "Phase",
-    col_review: "Review",
-    signal_stop: "Possible landing",
-    signal_disappeared: "Disappeared",
-    event_probable_stop: "Possible Landing",
-    event_disappearance: "Disappearance",
-    class_scheduled_airline: "Scheduled airline",
-    class_unknown_candidate: "Unknown candidate",
-    class_non_airline_candidate: "Non-airline candidate",
-    category_indigenous_territory: "Indigenous territory",
-    category_conservation_unit: "Conservation unit",
-    areas_subtitle: "Official FUNAI + CNUC data",
-    areas_title: "Select monitored areas",
-    areas_search: "Search name, state or phase",
-    areas_all_types: "All types",
-    areas_indigenous: "Indigenous territories",
-    areas_conservation: "Conservation units",
-    areas_all: "All",
-    areas_selected: "Selected",
-    areas_not_selected: "Not selected",
-    areas_filter: "Filter",
-    areas_select_visible: "Select visible",
-    areas_deselect_visible: "Deselect visible",
-    areas_select_filtered: "Select all filtered",
-    areas_matching: "matching areas",
-    col_monitor: "Monitor",
-    col_name: "Name",
-    col_type: "Type",
-    col_state: "State",
-    col_phase_category: "Phase/category",
-    col_source: "Source",
-    areas_no_data: "No areas found. Run boundary synchronization first.",
-    review_subtitle: "Calibration evidence",
-    review_title: "Review detected events",
-    review_all: "All reviews",
-    review_unreviewed: "Unreviewed",
-    review_useful: "Useful",
-    review_noise: "Noise",
-    review_uncertain: "Uncertain",
-    review_refresh: "Refresh",
-    review_save: "Save review",
-    review_no_events: "No matching events.",
-    settings_workflow: "Workflow",
-    settings_phase_providers: "Phase and providers",
-    settings_operating_phase: "Operating phase",
-    settings_flight_providers: "Flight providers",
-    settings_poll_interval: "Poll interval (seconds)",
-    settings_save_workflow: "Save workflow",
-    settings_saved: "Saved.",
-    settings_secrets: "Secrets",
-    settings_api_keys: "API keys",
-    settings_fr24_key: "Flightradar24 token",
-    settings_adsb_key: "ADS-B Exchange key",
-    settings_resend_key: "Resend API key",
-    settings_placeholder: "Leave blank to keep existing",
-    settings_save_keys: "Save keys securely",
-    settings_notifications: "Notifications",
-    settings_email: "Email",
-    settings_email_provider: "Email provider",
-    settings_console: "Console preview",
-    settings_recipients: "Recipients, comma-separated",
-    settings_sender: "Sender",
-    settings_smtp_host: "SMTP host",
-    settings_smtp_port: "SMTP port",
-    settings_smtp_user: "SMTP username",
-    settings_smtp_pass: "SMTP password",
-    settings_smtp_starttls: "Use STARTTLS",
-    settings_save_email: "Save email settings",
-    settings_detection: "Detection",
-    settings_noise: "Noise controls",
-    settings_stop_obs: "Stop observations",
-    settings_stop_duration: "Stop duration seconds",
-    settings_stationary_radius: "Stationary radius metres",
-    settings_max_stop_speed: "Maximum stop speed kt",
-    settings_disappear_obs: "Disappearance observations",
-    settings_disappear_polls: "Missing successful polls",
-    settings_disappear_alt: "Maximum disappearance altitude ft",
-    settings_outside_obs: "Outside observations to close episode",
-    settings_max_emails: "Daily email cap",
-    settings_save_thresholds: "Save thresholds",
-    settings_connectivity: "Connectivity",
-    settings_test_providers: "Test providers",
-    settings_testing: "Testing…",
-    settings_aircraft_returned: "aircraft returned",
-    settings_timezone: "Timezone",
-    timezone_label: "Dashboard timezone",
-    settings_language: "Language",
-    settings_display: "Display",
-    time_at: " at ",
-    review_notes: "Notes",
-    test_button: "Test",
+    app_title: "Flight Geofence Alerts",
   },
 };
 
@@ -296,6 +34,7 @@ const appState = {
   areaFilter: { search: "", category: "", selected: "" },
   language: "en",
   timezone: "America/Sao_Paulo",
+  translations: fallbackTranslations,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -310,7 +49,8 @@ const escapeHtml = (value) =>
 
 function t(key) {
   const lang = appState.language || "en";
-  return (translations[lang] && translations[lang][key]) || translations.en[key] || key;
+  const dict = appState.translations || fallbackTranslations;
+  return (dict[lang] && dict[lang][key]) || (dict.en && dict.en[key]) || key;
 }
 
 function detectBrowserLanguage() {
@@ -412,44 +152,167 @@ function translateCategory(category) {
   return t(mapping[category] || category);
 }
 
-function aircraftUrl(hex) {
-  return `https://www.flightradar24.com/data/aircraft/${hex.toLowerCase()}`;
+function aircraftHexLinks(hex) {
+  if (!hex) return [];
+  const h = hex.trim().toLowerCase();
+  if (h.startsWith("~")) return [];
+  if (!/^[0-9a-f]{6}$/.test(h)) return [];
+  return [
+    { label: "ADSB.lol", url: `https://globe.adsb.lol/?icao=${h}` },
+    { label: "ADS-B Exchange", url: `https://globe.adsbexchange.com/?icao=${h}` },
+    { label: "Airplanes.live", url: `https://globe.airplanes.live/?icao=${h}` },
+  ];
 }
 
-function aircraftTypeUrl(type) {
-  return type ? `https://www.flightradar24.com/data/aircraft/${type.toLowerCase()}` : null;
-}
-
-function registrationUrl(registration) {
-  if (!registration) return null;
-  const reg = registration.toUpperCase().replace(/-/g, "");
-  // For Brazilian registrations (PT-XXX), link to ANAC SIGA
-  if (reg.startsWith("PT")) {
-    return `https://www.gov.br/anac/pt-br/assuntos/registro-aeronaves`;
+function registrationLinks(registration) {
+  if (!registration) return [];
+  const reg = registration.trim().toUpperCase().replace(/-/g, "");
+  if (!reg || reg.length < 2 || !/^[A-Z0-9]+$/.test(reg) || !/[A-Z]/.test(reg)) return [];
+  const links = [];
+  const brazilMatch = /^(PP|PR|PS|PT|PU)[A-Z0-9]{3}$/.test(reg);
+  if (brazilMatch) {
+    links.push({ label: "ANAC RAB", url: `https://aeronaves.anac.gov.br/aeronaves/cons_rab_print.asp?nf=${reg}` });
+    links.push({ label: "Search ANAC RAB", url: "https://aeronaves.anac.gov.br/aeronaves/cons_rab.asp" });
   }
-  // For other registrations, link to FlightRadar24
-  return `https://www.flightradar24.com/data/aircraft/${reg.toLowerCase()}`;
+  links.push({ label: "Flightradar24", url: `https://www.flightradar24.com/data/aircraft/${reg.toLowerCase()}` });
+  return links;
+}
+
+function callsignLinks(callsign) {
+  if (!callsign) return [];
+  const cs = callsign.trim().toUpperCase();
+  if (!/^[A-Z0-9-]{2,12}$/.test(cs)) return [];
+  return [{ label: "FlightAware", url: `https://www.flightaware.com/live/flight/${cs}` }];
+}
+
+function positionLinks(lat, lng) {
+  if (lat == null || lng == null) return [];
+  const latF = parseFloat(lat), lngF = parseFloat(lng);
+  if (isNaN(latF) || isNaN(lngF) || !isFinite(latF) || !isFinite(lngF)) return [];
+  if (latF < -90 || latF > 90 || lngF < -180 || lngF > 180) return [];
+  const latS = latF.toFixed(6), lngS = lngF.toFixed(6);
+  return [
+    { label: "Google Maps", url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(latS + "," + lngS)}` },
+    { label: "OpenStreetMap", url: `https://www.openstreetmap.org/?mlat=${latS}&mlon=${lngS}#map=13/${latS}/${lngS}` },
+  ];
+}
+
+function airportLinks(icao, iata, ident) {
+  const links = [];
+  const seen = new Set();
+  function add(label, url, priority) {
+    if (!seen.has(url)) { seen.add(url); links.push({ label, url, priority }); }
+  }
+  if (icao) {
+    const ic = icao.trim().toUpperCase();
+    if (ic.length === 4 && ic.startsWith("S")) add("AISWEB", `https://aisweb.decea.mil.br/?codigo=${ic}&i=aerodromos`, 1);
+    if (ic.length === 4 && /^[A-Z0-9]{4}$/.test(ic)) add("FlightAware", `https://www.flightaware.com/live/airport/${ic}`, 2);
+  }
+  if (ident) {
+    const id = ident.trim().toUpperCase();
+    if (id && /^[A-Z0-9]+$/.test(id)) add("OurAirports", `https://ourairports.com/airports/${id}/`, 3);
+  }
+  if (iata) {
+    const ia = iata.trim().toUpperCase();
+    if (ia.length === 3 && /^[A-Z]{3}$/.test(ia)) add("Flightradar24", `https://www.flightradar24.com/data/airports/${ia.toLowerCase()}`, 4);
+  }
+  return links.sort((a, b) => a.priority - b.priority);
+}
+
+function providerLinks(providerId) {
+  const map = {
+    adsb_lol: { label: "ADSB.lol", url: "https://adsb.lol/" },
+    airplanes_live: { label: "Airplanes.live", url: "https://airplanes.live/" },
+    adsbexchange: { label: "ADS-B Exchange", url: "https://www.adsbexchange.com/" },
+    flightradar24: { label: "Flightradar24", url: "https://www.flightradar24.com/" },
+  };
+  return map[providerId] ? [map[providerId]] : [];
 }
 
 function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
-  const typeUrl = aircraftTypeUrl(event.aircraft_type);
-  const typeDisplay = event.aircraft_type
-    ? (typeUrl ? `<a href="${typeUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.aircraft_type)}</a>` : escapeHtml(event.aircraft_type))
-    : "—";
-  const regUrl = registrationUrl(event.registration);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexDisplay = hexLinks.length
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(hex)}</a>`
+    : escapeHtml(hex);
+  const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
-    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
+    ? (regLinks.length ? `<a href="${regLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
     : "—";
   return `<tr>
-    <td>${formatTime(event.occurred_at)}</td>
+    <td>${escapeHtml(formatTime(event.occurred_at))}</td>
     <td><span class="signal ${event.event_type === "PROBABLE_STOP" ? "stop" : "disappeared"}">${eventLabel(event.event_type)}</span></td>
-    <td><strong><a href="${aircraftUrl(event.aircraft_hex)}" target="_blank" rel="noopener" style="color:var(--ink);text-decoration:underline">${escapeHtml(hex)}</a></strong><div class="muted">${escapeHtml(event.callsign || "—")} · ${regDisplay} · ${typeDisplay}</div></td>
+    <td><strong>${hexDisplay}</strong><div class="muted">${escapeHtml(event.callsign || "—")} · ${regDisplay} · ${escapeHtml(event.aircraft_type || "—")}</div></td>
     <td>${event.area_names.map(escapeHtml).join("<br>")}</td>
     <td>${escapeHtml(String(event.altitude_ft ?? "—"))} ft · ${escapeHtml(String(event.ground_speed_kt ?? "—"))} kt</td>
     <td>${escapeHtml(event.phase)}</td>
     <td>${escapeHtml(event.review_status)}</td>
   </tr>`;
+}
+
+async function loadEventDetail(eventId) {
+  const container = $("#event-detail-content");
+  if (!container) return;
+  container.innerHTML = `<p class="muted">Loading…</p>`;
+  try {
+    const result = await api(`/api/events?limit=500`);
+    const event = result.events.find((e) => e.id === eventId);
+    if (!event) {
+      container.innerHTML = `<p class="muted">Event not found.</p>`;
+      return;
+    }
+    const hexLinks = aircraftHexLinks(event.aircraft_hex);
+    const regLinks = registrationLinks(event.registration);
+    const csLinks = callsignLinks(event.callsign);
+    const posLinks = positionLinks(event.latitude, event.longitude);
+    const details = event.details || {};
+    const providerLks = providerLinks(event.provider);
+
+    const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
+
+    const rows = [
+      `<tr><td>${t("email_event")}</td><td><strong>${escapeHtml(eventLabel(event.event_type))}</strong></td></tr>`,
+      `<tr><td>${t("email_time")}</td><td>${escapeHtml(formatTime(event.occurred_at))}</td></tr>`,
+      `<tr><td>${t("email_aircraft")}</td><td><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</td></tr>`,
+    ];
+    if (event.callsign) rows.push(`<tr><td>${t("email_callsign")}</td><td>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</td></tr>`);
+    if (event.registration) rows.push(`<tr><td>${t("email_registration")}</td><td>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</td></tr>`);
+    if (event.aircraft_type) rows.push(`<tr><td>${t("email_aircraft_type")}</td><td>${escapeHtml(event.aircraft_type)}</td></tr>`);
+    if (event.area_names.length) rows.push(`<tr><td>${t("email_protected_areas")}</td><td>${event.area_names.map(escapeHtml).join(", ")}</td></tr>`);
+    if (event.latitude != null && event.longitude != null) {
+      const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
+      rows.push(`<tr><td>${t("email_last_position")}</td><td>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</td></tr>`);
+    }
+    if (event.altitude_ft != null) rows.push(`<tr><td>${t("email_altitude")}</td><td>${escapeHtml(String(event.altitude_ft))} ft MSL</td></tr>`);
+    if (event.ground_speed_kt != null) rows.push(`<tr><td>${t("email_ground_speed")}</td><td>${escapeHtml(String(event.ground_speed_kt))} kt</td></tr>`);
+    if (event.provider) rows.push(`<tr><td>${t("email_provider")}</td><td>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</td></tr>`);
+    if (details.source_type) rows.push(`<tr><td>${t("email_source_type")}</td><td>${escapeHtml(details.source_type)}</td></tr>`);
+    if (details.origin) rows.push(`<tr><td>${t("email_origin")}</td><td>${escapeHtml(details.origin)}</td></tr>`);
+    if (details.destination) rows.push(`<tr><td>${t("email_destination")}</td><td>${escapeHtml(details.destination)}</td></tr>`);
+    rows.push(`<tr><td>${t("email_reason")}</td><td>${escapeHtml(event.reason)}</td></tr>`);
+    rows.push(`<tr><td>${t("email_classification")}</td><td>${escapeHtml(translateClassification(event.airline_classification))}</td></tr>`);
+
+    container.innerHTML = `
+      <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.join("")}</table>
+      <p style="margin-top:16px"><a href="/">&larr; Back to dashboard</a></p>`;
+  } catch (error) {
+    container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function handleHashRoute() {
+  const hash = window.location.hash || "";
+  const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
+  if (match) {
+    $$(".tab").forEach((t) => t.classList.remove("active"));
+    $$(".view").forEach((v) => v.classList.remove("active"));
+    const detailView = $("#view-event-detail");
+    if (detailView) {
+      detailView.classList.add("active");
+      loadEventDetail(match[1]);
+    }
+  }
 }
 
 async function loadStatus() {
@@ -514,14 +377,18 @@ async function bulkFiltered(selected) {
 }
 
 function reviewCard(event) {
-  const regUrl = registrationUrl(event.registration);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexDisplay = hexLinks.length
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
+    : escapeHtml(event.aircraft_hex.toUpperCase());
+  const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
-    ? (regUrl ? `<a href="${regUrl}" target="_blank" rel="noopener" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
+    ? (regLinks.length ? `<a href="${regLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
     : "—";
   return `<article class="review-card" data-id="${escapeHtml(event.id)}">
-    <div><strong>${eventLabel(event.event_type)} · <a href="${aircraftUrl(event.aircraft_hex)}" target="_blank" rel="noopener" style="color:var(--ink);text-decoration:underline">${escapeHtml(event.aircraft_hex.toUpperCase())}</a></strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${formatTime(event.occurred_at)}</p></div>
+    <div><strong>${eventLabel(event.event_type)} · ${hexDisplay}</strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${formatTime(event.occurred_at)}</p></div>
     <label>${t("col_review")}<select class="review-status"><option value="unreviewed">${t("review_unreviewed")}</option><option value="useful">${t("review_useful")}</option><option value="noise">${t("review_noise")}</option><option value="uncertain">${t("review_uncertain")}</option></select></label>
-    <label>${t('review_notes', appState.language)}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
+    <label>${t('review_notes')}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save">${t("review_save")}</button>
   </article>`;
 }
@@ -592,7 +459,7 @@ function setField(form, key, setting) {
     field.value = setting.value;
   }
   field.disabled = Boolean(setting.locked);
-  if (setting.locked) field.title = "Controlled by environment variable";
+  if (setting.locked) field.title = t("env_controlled");
 }
 
 function applyTranslations() {
@@ -620,6 +487,9 @@ function applyTranslations() {
   });
   // Update HTML lang attribute
   updateHtmlLang();
+  // Update language toggle button
+  const langBtn = $("#lang-toggle");
+  if (langBtn) langBtn.textContent = appState.language === "pt" ? "PT" : "EN";
   // Update language selector
   const langSelect = $("#settings-language");
   if (langSelect) langSelect.value = appState.language;
@@ -652,7 +522,7 @@ async function loadSettings() {
     box.disabled = settings.flight_providers.locked;
   });
   $("#provider-tests").innerHTML = Object.entries(result.provider_options)
-    .map(([id, info]) => `<div class="provider-test"><div><strong>${escapeHtml(info.name)}</strong><p>${escapeHtml(info.note)}</p></div><button class="button secondary" data-provider="${id}">${t('test_button', appState.language)}</button><span></span></div>`)
+    .map(([id, info]) => `<div class="provider-test"><div><strong>${escapeHtml(info.name)}</strong><p>${escapeHtml(info.note)}</p></div><button class="button secondary" data-provider="${id}">${t('test_button')}</button><span></span></div>`)
     .join("");
   $$("button[data-provider]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -676,7 +546,7 @@ async function runAction(button, text, endpoint) {
   output.textContent = text;
   try {
     const response = await api(endpoint, { method: "POST" });
-    output.textContent = response.error_message || response.error || response.status || "Completed.";
+    output.textContent = response.error_message || response.error || response.status || t("action_completed");
     await Promise.all([loadStatus(), loadSettings()]);
   } catch (error) {
     output.textContent = error.message;
@@ -688,12 +558,20 @@ async function runAction(button, text, endpoint) {
 async function init() {
   appState.language = detectBrowserLanguage();
   updateHtmlLang();
+  // Fetch translations from backend (single source of truth)
+  try {
+    const i18n = await fetch("/api/i18n", { credentials: "same-origin" });
+    if (i18n.ok) appState.translations = await i18n.json();
+  } catch { /* fallbackTranslations stays in use */ }
   const auth = await api("/api/auth/status");
   if (!auth.authenticated) return showLogin();
   appState.csrfToken = auth.csrf_token;
   showApp();
   await Promise.all([loadStatus(), loadSettings()]);
+  handleHashRoute();
 }
+
+window.addEventListener("hashchange", handleHashRoute);
 
 $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -714,6 +592,18 @@ $("#login-form").addEventListener("submit", async (event) => {
 $("#logout").addEventListener("click", async () => {
   await api("/api/auth/logout", { method: "POST" });
   showLogin();
+});
+
+$("#lang-toggle").addEventListener("click", async () => {
+  appState.language = appState.language === "pt" ? "en" : "pt";
+  $("#lang-toggle").textContent = appState.language === "pt" ? "PT" : "EN";
+  updateHtmlLang();
+  applyTranslations();
+  if (appState.csrfToken) {
+    try {
+      await api("/api/settings", { method: "POST", body: JSON.stringify({ values: { language: appState.language } }) });
+    } catch { /* best effort */ }
+  }
 });
 
 $$(".tab").forEach((tab) => {

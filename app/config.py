@@ -19,6 +19,7 @@ class EnvSettings(BaseSettings):
     session_https_only: bool = False
     trusted_hosts: str = "localhost,127.0.0.1"
     allow_insecure_defaults: bool = False
+    dashboard_base_url: str = ""
 
     operating_phase: str = ""
     flight_providers: str = ""

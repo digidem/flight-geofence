@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Flight Geofence Alerts</title>
+  <title data-i18n="app_title">Flight Geofence Alerts</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <div id="login-screen" class="login-screen">
     <form id="login-form" class="login-card">
       <p class="eyebrow" data-i18n="login_title">Protected monitoring interface</p>
-      <h1>Flight Geofence Alerts</h1>
+      <h1 data-i18n="app_title">Flight Geofence Alerts</h1>
       <p data-i18n="login_subtitle">Use the password configured as <code>ADMIN_PASSWORD</code>.</p>
       <label><span data-i18n="login_password_label">Password</span><input id="login-password" type="password" autocomplete="current-password" required></label>
       <button class="button primary" type="submit" data-i18n="login_button">Log in</button>
@@ -20,8 +20,8 @@
 
   <div id="app" hidden>
     <header class="topbar">
-      <div><p class="eyebrow" data-i18n="dashboard_subtitle">Monitoramento territorial · PoC com dados reais</p><h1>Flight Geofence Alerts</h1></div>
-      <div class="header-actions"><span id="phase-badge" class="badge">—</span><button id="logout" class="button ghost" data-i18n="logout_button">Sair</button></div>
+      <div><p class="eyebrow" data-i18n="dashboard_subtitle">Monitoramento territorial · PoC com dados reais</p><h1 data-i18n="app_title">Flight Geofence Alerts</h1></div>
+      <div class="header-actions"><button id="lang-toggle" class="button ghost lang-toggle">PT</button><span id="phase-badge" class="badge">—</span><button id="logout" class="button ghost" data-i18n="logout_button">Sair</button></div>
     </header>
     <nav class="tabs">
       <button class="tab active" data-view="dashboard" data-i18n="nav_dashboard">Painel</button>
@@ -81,7 +81,7 @@
         <div class="grid two">
           <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_workflow">Fluxo de trabalho</p><h2 data-i18n="settings_phase_providers">Fase e fornecedores</h2></div></div><form id="settings-core" class="form-grid">
             <label data-i18n="settings_operating_phase">Fase operacional<select name="operating_phase"><option value="shadow" data-i18n="phase_shadow">Sombra</option><option value="review" data-i18n="phase_review">Revisão</option><option value="live" data-i18n="phase_live">Ao vivo</option></select></label>
-            <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> ADSB.lol — free/open</label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> Airplanes.live — free non-commercial</label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> ADS-B Exchange — paid</label><label class="check"><input type="checkbox" name="flight_providers" value="flightradar24"> Flightradar24 — paid credits</label></fieldset>
+            <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> <span data-i18n="provider_adsb_lol_cost">ADSB.lol — dados abertos/gratuitos</span></label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> <span data-i18n="provider_airplanes_live_cost">Airplanes.live — tier gratuito não-comercial</span></label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> <span data-i18n="provider_adsbexchange_cost">ADS-B Exchange — pago</span></label><label class="check"><input type="checkbox" name="flight_providers" value="flightradar24"> <span data-i18n="provider_flightradar24_cost">Flightradar24 — créditos pagos</span></label></fieldset>
             <label data-i18n="settings_poll_interval">Intervalo de consulta (segundos)<input name="poll_interval_seconds" type="number" min="30" max="86400"></label>
             <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar fluxo de trabalho</button><div class="form-result"></div>
           </form></article>
@@ -108,11 +108,17 @@
 
           <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_display">Display</p><h2 data-i18n="settings_timezone">Fuso horário</h2></div></div><form id="settings-display" class="form-grid">
             <label data-i18n="settings_language">Idioma<select id="settings-language" name="language"><option value="pt">Português</option><option value="en">English</option></select></label>
-            <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo">Horário de Brasília (UTC-3)</option><option value="America/Manaus">Manaus (UTC-4)</option><option value="America/Belem">Belém (UTC-3)</option><option value="America/Rio_Branco">Rio Branco (UTC-5)</option><option value="America/Noronha">Fernando de Noronha (UTC-2)</option></select></label>
+            <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo" data-i18n="tz_brasilia">Horário de Brasília (UTC-3)</option><option value="America/Manaus" data-i18n="tz_manaus">Manaus (UTC-4)</option><option value="America/Belem" data-i18n="tz_belem">Belém (UTC-3)</option><option value="America/Rio_Branco" data-i18n="tz_riobranco">Rio Branco (UTC-5)</option><option value="America/Noronha" data-i18n="tz_noronha">Fernando de Noronha (UTC-2)</option></select></label>
             <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar</button><div class="form-result"></div>
           </form></article>
         </div>
         <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
+      </section>
+
+      <section id="view-event-detail" class="view">
+        <article class="panel">
+          <div id="event-detail-content"></div>
+        </article>
       </section>
     </main>
   </div>

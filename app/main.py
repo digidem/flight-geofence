@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -44,6 +44,7 @@ from .database import (
 )
 from .detection import classify_aircraft, process_missing, process_observation
 from .emailer import send_event_email
+from .i18n import get_translations, t
 from .geofences import GeofenceIndex
 from .locks import exclusive_job_lock
 from .providers import PROVIDER_INFO, fetch_all, test_provider
@@ -156,8 +157,9 @@ def _clear_login_failures(key: str) -> None:
 
 
 async def run_boundary_sync() -> dict:
+    lang = str(get_setting("language") or "pt")
     if sync_lock.locked():
-        return {"status": "skipped", "reason": "Boundary sync already running"}
+        return {"status": "skipped", "reason": t("err_sync_running", lang)}
     async with sync_lock:
         return await sync_boundaries()
 
@@ -172,12 +174,13 @@ async def retry_email_queue() -> int:
 
 
 async def run_coverage_cycle() -> dict:
+    lang = str(get_setting("language") or "pt")
     if poll_lock.locked():
-        return {"status": "skipped", "reason": "Coverage cycle already running"}
+        return {"status": "skipped", "reason": t("err_poll_running", lang)}
     async with poll_lock:
         with exclusive_job_lock("coverage-poll") as acquired:
             if not acquired:
-                return {"status": "skipped", "reason": "Coverage cycle already running in another process"}
+                return {"status": "skipped", "reason": t("err_poll_running_process", lang)}
             return await _run_coverage_cycle_locked()
 
 
@@ -210,11 +213,12 @@ async def _run_coverage_cycle_locked() -> dict:
     # but respect an operator downgrade to Shadow/Review as an immediate mail pause.
     if phase == "live":
         await retry_email_queue()
+    lang = str(get_setting("language") or "pt")
     if not regions:
         run.update(
             {
                 "completed_at": utc_now().isoformat(),
-                "error_message": "No query regions. Sync and select protected areas first.",
+                "error_message": t("err_no_regions", lang),
             }
         )
         save_poll_run(run)
@@ -328,6 +332,11 @@ async def index():
     return FileResponse(static_dir / "index.html")
 
 
+@app.get("/events/{event_id}")
+async def event_detail(event_id: str):
+    return RedirectResponse(url=f"/#/events/{event_id}", status_code=302)
+
+
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok", "version": APP_VERSION}
@@ -338,6 +347,11 @@ async def readyz():
     if not database_ok():
         raise HTTPException(status_code=503, detail="Database check failed")
     return {"status": "ready", "version": APP_VERSION}
+
+
+@app.get("/api/i18n")
+async def i18n_endpoint():
+    return get_translations()
 
 
 @app.get("/api/auth/status")
@@ -375,39 +389,36 @@ async def logout(request: Request):
 
 
 def _live_readiness_errors() -> list[str]:
+    lang = str(get_setting("language") or "pt")
     provider = str(get_setting("email_provider"))
     errors: list[str] = []
     if provider == "console":
-        errors.append("Choose Resend or SMTP before enabling Live phase")
+        errors.append(t("err_live_need_resend_smtp", lang))
     elif provider == "resend" and not get_setting("resend_api_key"):
-        errors.append("Resend API key is missing")
+        errors.append(t("err_live_need_resend_key", lang))
     elif provider == "smtp" and not all(
         [get_setting("smtp_host"), get_setting("smtp_username"), get_setting("smtp_password")]
     ):
-        errors.append("SMTP host, username and password are required")
+        errors.append(t("err_live_need_smtp", lang))
     if not get_setting("alert_recipients"):
-        errors.append("At least one alert recipient is required")
+        errors.append(t("err_live_need_recipients", lang))
     return errors
 
 
 def _warnings(counts: dict, regions: list[dict]) -> list[str]:
+    lang = str(get_setting("language") or "pt")
     warnings: list[str] = []
     if counts["total"] == 0:
-        warnings.append("Official boundaries have not been synchronized yet.")
+        warnings.append(t("warn_boundaries_not_synced", lang))
     if counts["selected"] == 0:
-        warnings.append("No protected areas are selected.")
+        warnings.append(t("warn_no_areas_selected", lang))
     providers = get_setting("flight_providers")
     interval = int(get_setting("poll_interval_seconds"))
     per_provider_daily = int(len(regions) * 86400 / max(interval, 1)) if regions else 0
     if "airplanes_live" in providers and per_provider_daily > 500:
-        warnings.append(
-            f"Airplanes.live would require about {per_provider_daily} requests/day; "
-            "the app enforces its 500-request daily ceiling."
-        )
+        warnings.append(t("warn_airplanes_limit", lang).replace("{n}", str(per_provider_daily)))
     if "flightradar24" in providers:
-        warnings.append(
-            "Flightradar24 charges per returned flight; overlapping broad regions can consume credits quickly."
-        )
+        warnings.append(t("warn_flightradar_credits", lang))
     if get_setting("operating_phase") == "live":
         warnings.extend(_live_readiness_errors())
     effective_stop_minutes = max(
@@ -415,8 +426,7 @@ def _warnings(counts: dict, regions: list[dict]) -> list[str]:
         (int(get_setting("min_inside_observations_for_stop")) - 1) * interval / 60,
     )
     warnings.append(
-        f"With the current interval, the earliest probable-stop confirmation is roughly "
-        f"{effective_stop_minutes:.1f} minutes."
+        t("warn_earliest_stop", lang).replace("{n}", f"{effective_stop_minutes:.1f}")
     )
     return warnings
 
@@ -515,12 +525,13 @@ async def areas_get(
 @app.post("/api/areas/selection")
 async def areas_selection(request: Request, payload: SelectionPayload):
     require_auth(request)
+    lang = str(get_setting("language") or "pt")
     with exclusive_job_lock("boundary-sync") as boundaries_available:
         if not boundaries_available:
-            raise HTTPException(status_code=409, detail="Boundary sync is currently running")
+            raise HTTPException(status_code=409, detail=t("err_sync_conflict", lang))
         with exclusive_job_lock("coverage-poll") as poll_available:
             if not poll_available:
-                raise HTTPException(status_code=409, detail="Flight poll is currently running")
+                raise HTTPException(status_code=409, detail=t("err_poll_conflict", lang))
             previous_selection = selected_area_ids()
             if payload.ids:
                 changed = set_area_selection(payload.ids, payload.selected)
@@ -565,6 +576,7 @@ async def provider_test(request: Request, provider: str):
 @app.post("/api/email/test")
 async def email_test(request: Request):
     require_auth(request)
+    lang = str(get_setting("language") or "pt")
     event = {
         "id": str(uuid.uuid4()),
         "event_type": "PROBABLE_STOP",
@@ -572,20 +584,20 @@ async def email_test(request: Request):
         "callsign": "TEST",
         "registration": None,
         "aircraft_type": None,
-        "area_names": ["Configuration test"],
+        "area_names": [t("err_config_test_area", lang)],
         "occurred_at": utc_now().isoformat(),
         "latitude": 0,
         "longitude": 0,
         "altitude_ft": None,
         "ground_speed_kt": None,
         "provider": "configuration-test",
-        "reason": "Email configuration test; this is not an aircraft alert.",
+        "reason": t("err_config_test_reason", lang),
         "airline_classification": "test",
         "details": {},
     }
     status_value, error = await send_event_email(event)
     if status_value == "failed":
-        raise HTTPException(status_code=400, detail=error or "Email test failed")
+        raise HTTPException(status_code=400, detail=error or t("err_email_test_failed", lang))
     return {"status": status_value, "error": error}
 
 
@@ -603,6 +615,7 @@ async def events_get(
 @app.post("/api/events/{event_id}/review")
 async def event_review(request: Request, event_id: str, payload: ReviewPayload):
     require_auth(request)
+    lang = str(get_setting("language") or "pt")
     if not review_event(event_id, payload.status, payload.notes):
-        raise HTTPException(status_code=400, detail="Invalid review status or event")
+        raise HTTPException(status_code=400, detail=t("err_invalid_review", lang))
     return {"updated": True}

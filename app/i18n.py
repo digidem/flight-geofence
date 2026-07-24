@@ -1,7 +1,13 @@
-"""Internationalization support for Flight Geofence Alerts."""
+"""Internationalization support for Flight Geofence Alerts.
+
+Single source of truth for all EN/PT translation keys used by both the
+Python backend and the JavaScript frontend (via ``/api/i18n``).
+"""
 
 TRANSLATIONS = {
     "pt": {
+        # App title
+        "app_title": "Flight Geofence Alerts",
         # Event types
         "event_probable_stop": "Possível Pouso",
         "event_disappearance": "Desaparecimento",
@@ -13,6 +19,7 @@ TRANSLATIONS = {
         "phase_shadow": "Sombra",
         "phase_review": "Revisão",
         "phase_live": "Ao vivo",
+        "phase_badge": "Fase",
         # Review statuses
         "review_unreviewed": "Não revisado",
         "review_useful": "Útil",
@@ -39,28 +46,33 @@ TRANSLATIONS = {
         "email_destination": "Destino",
         "email_reason": "Motivo",
         "email_classification": "Classificação",
+        "email_open_event": "Abrir evento",
+        "email_flight_number": "Número do voo",
+        "email_tracking_services": "Serviços de rastreamento",
+        "email_external_tracking_note": "Serviços de rastreamento externo podem não ter posição ou registro para todas as aeronaves.",
         "email_disclaimer": "Este é um sinal de monitoramento não verificado. Não prova pouso, desligamento intencional de transponder, mineração ilegal ou irregularidade. Verifique com outras evidências antes de agir.",
         "email_possible_stop": "Possível pouso",
         "email_disappeared": "Posição da aeronave desapareceu",
         "email_unavailable": "Indisponível",
         "email_footer": "Alertas de Geovoo de Voo — Monitoramento territorial",
-        # Dashboard
+        # Navigation
         "nav_dashboard": "Painel",
         "nav_areas": "Áreas protegidas",
         "nav_events": "Revisar eventos",
         "nav_settings": "Configurações",
+        # Login
         "login_title": "Interface de monitoramento protegida",
         "login_subtitle": "Use a senha configurada como",
         "login_button": "Entrar",
         "login_password_label": "Senha",
         "logout_button": "Sair",
-        "phase_badge": "Fase",
+        # Dashboard
         "dashboard_subtitle": "Monitoramento territorial · PoC com dados reais",
         "dashboard_current_phase": "Fase atual",
         "dashboard_three_phase": "Fluxo de três fases",
-        "shadow_description": "APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.",
-        "review_description": "Classifique eventos como úteis, ruído ou incerto e ajuste limiares e áreas selecionadas.",
-        "live_description": "Apenas eventos de pouso provável e desaparecimento acionam a entrega de e-mail configurada.",
+        "shadow_desc": "APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.",
+        "review_desc": "Classifique eventos como úteis, ruído ou incerto e ajuste limiares e áreas selecionadas.",
+        "live_desc": "Apenas eventos de pouso provável e desaparecimento acionam a entrega de e-mail configurada.",
         "dashboard_actions": "Ações",
         "dashboard_operations": "Operações",
         "sync_boundaries": "Sincronizar limites oficiais",
@@ -70,9 +82,11 @@ TRANSLATIONS = {
         "action_syncing": "Baixando e processando limites oficiais…",
         "action_polling": "Consultando fornecedores de voo…",
         "action_testing_email": "Testando entrega de e-mail…",
+        "action_completed": "Concluído.",
         "dashboard_recent": "Sinais recentes",
         "dashboard_events": "Eventos suspeitos",
-        "dashboard_no_events": "Nenhum evento suspeito ainda.",
+        "no_events": "Nenhum evento suspeito ainda.",
+        # Metrics
         "metric_areas": "Áreas protegidas",
         "metric_regions": "Regiões de consulta",
         "metric_events": "Eventos",
@@ -122,6 +136,8 @@ TRANSLATIONS = {
         "review_refresh": "Atualizar",
         "review_save": "Salvar revisão",
         "review_no_events": "Nenhum evento correspondente.",
+        "review_notes": "Notas",
+        "test_button": "Testar",
         # Settings
         "settings_workflow": "Fluxo de trabalho",
         "settings_phase_providers": "Fase e fornecedores",
@@ -165,18 +181,95 @@ TRANSLATIONS = {
         "settings_test_providers": "Testar fornecedores",
         "settings_testing": "Testando…",
         "settings_aircraft_returned": "aeronaves retornadas",
-        # Timezone and language
-        "settings_language": "Idioma",
+        "settings_display": "Exibição",
         "settings_timezone": "Fuso horário",
         "timezone_label": "Fuso horário do painel",
+        "settings_language": "Idioma",
+        "time_at": " às ",
+        # Timezone labels
+        "tz_brasilia": "Horário de Brasília (UTC-3)",
+        "tz_manaus": "Manaus (UTC-4)",
+        "tz_belem": "Belém (UTC-3)",
+        "tz_riobranco": "Rio Branco (UTC-5)",
+        "tz_noronha": "Fernando de Noronha (UTC-2)",
+        # Provider cost labels
+        "provider_adsb_lol_cost": "ADSB.lol — dados abertos/gratuitos",
+        "provider_airplanes_live_cost": "Airplanes.live — tier gratuito não-comercial",
+        "provider_adsbexchange_cost": "ADS-B Exchange — pago",
+        "provider_flightradar24_cost": "Flightradar24 — créditos pagos",
+        # Environment / UI
+        "env_controlled": "Controlado por variável de ambiente",
         # Status messages
         "status_healthy": "Saudável",
         "status_not_ready": "Não pronto",
         "status_no_poll": "Nenhuma consulta",
         "status_last_sync": "Última sincronização",
         "status_no_sync": "Nenhuma sincronização",
+        # Dashboard warnings
+        "warn_boundaries_not_synced": "Limites oficiais ainda não sincronizados.",
+        "warn_no_areas_selected": "Nenhuma área protegida selecionada.",
+        "warn_airplanes_limit": "Airplanes.live exigiria cerca de {n} requisições/dia; o app impõe o limite de 500.",
+        "warn_flightradar_credits": "Flightradar24 cobra por voo retornado; regiões amplas sobrepostas podem consumir créditos rapidamente.",
+        "warn_earliest_stop": "Com o intervalo atual, a confirmação de pouso provável mais cedo é de aproximadamente {n} minutos.",
+        # Error messages
+        "err_sync_running": "Sincronização de limites já em andamento",
+        "err_poll_running": "Ciclo de cobertura já em andamento",
+        "err_poll_running_process": "Ciclo de cobertura já em andamento em outro processo",
+        "err_no_regions": "Nenhuma região de consulta. Sincronize e selecione áreas protegidas primeiro.",
+        "err_invalid_csrf": "Token CSRF inválido",
+        "err_db_failed": "Verificação do banco de dados falhou",
+        "err_too_many_logins": "Muitas tentativas de login falharam",
+        "err_invalid_password": "Senha inválida",
+        "err_sync_conflict": "Sincronização de limites em andamento",
+        "err_poll_conflict": "Consulta de voo em andamento",
+        "err_invalid_review": "Status de revisão ou evento inválido",
+        "err_email_test_failed": "Teste de e-mail falhou",
+        "err_live_need_resend_smtp": "Escolha Resend ou SMTP antes de ativar a fase Ao vivo",
+        "err_live_need_resend_key": "Chave da API Resend ausente",
+        "err_live_need_smtp": "Host SMTP, nome de usuário e senha são obrigatórios",
+        "err_live_need_recipients": "Pelo menos um destinatário de alerta é obrigatório",
+        "err_config_test_area": "Teste de configuração",
+        "err_config_test_reason": "Teste de configuração de e-mail; este não é um alerta de aeronave.",
+        # Emailer errors
+        "err_smtp_missing": "Host SMTP, nome de usuário ou senha ausente",
+        "err_daily_cap": "Limite diário de e-mails atingido",
+        "err_no_recipients": "Nenhum destinatário de alerta configurado",
+        "err_invalid_sender": "EMAIL_FROM não é um endereço de remetente válido",
+        "err_resend_key_missing": "Chave da API Resend ausente",
+        "err_unsupported_email_provider": "Provedor de e-mail não suportado",
+        # Provider errors
+        "err_provider_daily_limit": "Limite diário de 500 requisições HTTP do Airplanes.live atingido",
+        "err_provider_non_object": "O provedor retornou uma resposta JSON que não é um objeto",
+        "err_provider_request_failed": "Solicitação ao provedor falhou",
+        "err_adsbexchange_key_missing": "Chave da API ADS-B Exchange ausente",
+        "err_unsupported_readsb_provider": "Provedor readsb não suportado",
+        "err_flightradar24_key_missing": "Chave da API Flightradar24 ausente",
+        "err_unknown_provider": "Provedor desconhecido",
+        "err_select_areas_first": "Selecione áreas e gere regiões de cobertura primeiro",
+        # Boundary sync errors
+        "err_boundaries_sync_running": "Sincronização de limites já em andamento",
+        "err_boundaries_poll_running": "Uma consulta de cobertura de voo está em andamento",
+        "err_funai_download_failed": "Falha no download WFS da FUNAI; não é possível prosseguir sem dados de territórios indígenas",
+        # Settings validation errors
+        "err_value_bool": "O valor deve ser true ou false",
+        "err_value_one_of": "O valor deve ser um de: {choices}",
+        "err_unsupported_list_values": "Valores de lista não suportados: {values}",
+        "err_value_min": "O valor deve ser pelo menos {min}",
+        "err_value_max": "O valor deve ser no máximo {max}",
+        "err_invalid_email": "Endereço(s) de e-mail inválido(s): {emails}",
+        "err_controlled_by_env": "{key} é controlado pela variável de ambiente {env}",
+        # Day names for emailer
+        "day_sunday": "Domingo",
+        "day_monday": "Segunda-feira",
+        "day_tuesday": "Terça-feira",
+        "day_wednesday": "Quarta-feira",
+        "day_thursday": "Quinta-feira",
+        "day_friday": "Sexta-feira",
+        "day_saturday": "Sábado",
     },
     "en": {
+        # App title
+        "app_title": "Flight Geofence Alerts",
         # Event types
         "event_probable_stop": "Possible Landing",
         "event_disappearance": "Disappearance",
@@ -188,6 +281,7 @@ TRANSLATIONS = {
         "phase_shadow": "Shadow",
         "phase_review": "Review",
         "phase_live": "Live",
+        "phase_badge": "Phase",
         # Review statuses
         "review_unreviewed": "Unreviewed",
         "review_useful": "Useful",
@@ -214,28 +308,33 @@ TRANSLATIONS = {
         "email_destination": "Destination",
         "email_reason": "Reason",
         "email_classification": "Classification",
+        "email_open_event": "Open event",
+        "email_flight_number": "Flight number",
+        "email_tracking_services": "Tracking services",
+        "email_external_tracking_note": "External tracking services may not currently have a position or record for every aircraft.",
         "email_disclaimer": "This is an unverified monitoring signal. It does not prove landing, intentional transponder shutdown, illegal mining, or wrongdoing. Verify it with other evidence before acting.",
         "email_possible_stop": "Possible landing",
         "email_disappeared": "Aircraft position disappeared",
         "email_unavailable": "Unavailable",
         "email_footer": "Flight Geofence Alerts — Territorial monitoring",
-        # Dashboard
+        # Navigation
         "nav_dashboard": "Dashboard",
         "nav_areas": "Protected areas",
         "nav_events": "Review events",
         "nav_settings": "Settings",
+        # Login
         "login_title": "Protected monitoring interface",
         "login_subtitle": "Use the password configured as",
         "login_button": "Log in",
         "login_password_label": "Password",
         "logout_button": "Log out",
-        "phase_badge": "Phase",
+        # Dashboard
         "dashboard_subtitle": "Territorial monitoring · real-data PoC",
         "dashboard_current_phase": "Current phase",
         "dashboard_three_phase": "Three-phase workflow",
-        "shadow_description": "Real APIs and official boundaries. Events are stored, but no external alert is sent.",
-        "review_description": "Classify events as useful, noise, or uncertain and adjust thresholds and selected areas.",
-        "live_description": "Only probable landing and disappearance events trigger configured email delivery.",
+        "shadow_desc": "Real APIs and official boundaries. Events are stored, but no external alert is sent.",
+        "review_desc": "Classify events as useful, noise, or uncertain and adjust thresholds and selected areas.",
+        "live_desc": "Only probable landing and disappearance events trigger configured email delivery.",
         "dashboard_actions": "Actions",
         "dashboard_operations": "Operations",
         "sync_boundaries": "Sync official boundaries",
@@ -245,9 +344,11 @@ TRANSLATIONS = {
         "action_syncing": "Downloading and processing official boundaries…",
         "action_polling": "Polling flight providers…",
         "action_testing_email": "Testing email delivery…",
+        "action_completed": "Completed.",
         "dashboard_recent": "Recent signals",
         "dashboard_events": "Suspicious events",
-        "dashboard_no_events": "No suspicious events yet.",
+        "no_events": "No suspicious events yet.",
+        # Metrics
         "metric_areas": "Protected areas",
         "metric_regions": "Query regions",
         "metric_events": "Events",
@@ -297,6 +398,8 @@ TRANSLATIONS = {
         "review_refresh": "Refresh",
         "review_save": "Save review",
         "review_no_events": "No matching events.",
+        "review_notes": "Notes",
+        "test_button": "Test",
         # Settings
         "settings_workflow": "Workflow",
         "settings_phase_providers": "Phase and providers",
@@ -326,10 +429,10 @@ TRANSLATIONS = {
         "settings_save_email": "Save email settings",
         "settings_detection": "Detection",
         "settings_noise": "Noise controls",
-        "settings_stop_obs": "Landing observations",
-        "settings_stop_duration": "Landing duration seconds",
+        "settings_stop_obs": "Stop observations",
+        "settings_stop_duration": "Stop duration seconds",
         "settings_stationary_radius": "Stationary radius metres",
-        "settings_max_stop_speed": "Maximum landing speed kt",
+        "settings_max_stop_speed": "Maximum stop speed kt",
         "settings_disappear_obs": "Disappearance observations",
         "settings_disappear_polls": "Missing successful polls",
         "settings_disappear_alt": "Maximum disappearance altitude ft",
@@ -340,24 +443,109 @@ TRANSLATIONS = {
         "settings_test_providers": "Test providers",
         "settings_testing": "Testing…",
         "settings_aircraft_returned": "aircraft returned",
-        # Timezone and language
-        "settings_language": "Language",
+        "settings_display": "Display",
         "settings_timezone": "Timezone",
         "timezone_label": "Dashboard timezone",
+        "settings_language": "Language",
+        "time_at": " at ",
+        # Timezone labels
+        "tz_brasilia": "Brasília time (UTC-3)",
+        "tz_manaus": "Manaus (UTC-4)",
+        "tz_belem": "Belém (UTC-3)",
+        "tz_riobranco": "Rio Branco (UTC-5)",
+        "tz_noronha": "Fernando de Noronha (UTC-2)",
+        # Provider cost labels
+        "provider_adsb_lol_cost": "ADSB.lol — free/open",
+        "provider_airplanes_live_cost": "Airplanes.live — free non-commercial",
+        "provider_adsbexchange_cost": "ADS-B Exchange — paid",
+        "provider_flightradar24_cost": "Flightradar24 — paid credits",
+        # Environment / UI
+        "env_controlled": "Controlled by environment variable",
         # Status messages
         "status_healthy": "Healthy",
         "status_not_ready": "Not ready",
         "status_no_poll": "No poll",
         "status_last_sync": "Last sync",
         "status_no_sync": "No sync",
+        # Dashboard warnings
+        "warn_boundaries_not_synced": "Official boundaries have not been synchronized yet.",
+        "warn_no_areas_selected": "No protected areas are selected.",
+        "warn_airplanes_limit": "Airplanes.live would require about {n} requests/day; the app enforces its 500-request daily ceiling.",
+        "warn_flightradar_credits": "Flightradar24 charges per returned flight; overlapping broad regions can consume credits quickly.",
+        "warn_earliest_stop": "With the current interval, the earliest probable-stop confirmation is roughly {n} minutes.",
+        # Error messages
+        "err_sync_running": "Boundary sync already running",
+        "err_poll_running": "Coverage cycle already running",
+        "err_poll_running_process": "Coverage cycle already running in another process",
+        "err_no_regions": "No query regions. Sync and select protected areas first.",
+        "err_invalid_csrf": "Invalid CSRF token",
+        "err_db_failed": "Database check failed",
+        "err_too_many_logins": "Too many failed login attempts",
+        "err_invalid_password": "Invalid password",
+        "err_sync_conflict": "Boundary sync is currently running",
+        "err_poll_conflict": "Flight poll is currently running",
+        "err_invalid_review": "Invalid review status or event",
+        "err_email_test_failed": "Email test failed",
+        "err_live_need_resend_smtp": "Choose Resend or SMTP before enabling Live phase",
+        "err_live_need_resend_key": "Resend API key is missing",
+        "err_live_need_smtp": "SMTP host, username and password are required",
+        "err_live_need_recipients": "At least one alert recipient is required",
+        "err_config_test_area": "Configuration test",
+        "err_config_test_reason": "Email configuration test; this is not an aircraft alert.",
+        # Emailer errors
+        "err_smtp_missing": "SMTP host, username or password is missing",
+        "err_daily_cap": "Daily email cap reached",
+        "err_no_recipients": "No alert recipients configured",
+        "err_invalid_sender": "EMAIL_FROM is not a valid sender address",
+        "err_resend_key_missing": "Resend API key is missing",
+        "err_unsupported_email_provider": "Unsupported email provider",
+        # Provider errors
+        "err_provider_daily_limit": "Airplanes.live daily limit of 500 HTTP requests reached",
+        "err_provider_non_object": "Provider returned a non-object JSON response",
+        "err_provider_request_failed": "Provider request failed",
+        "err_adsbexchange_key_missing": "ADS-B Exchange API key is missing",
+        "err_unsupported_readsb_provider": "Unsupported readsb provider",
+        "err_flightradar24_key_missing": "Flightradar24 API key is missing",
+        "err_unknown_provider": "Unknown provider",
+        "err_select_areas_first": "Select areas and generate coverage regions first",
+        # Boundary sync errors
+        "err_boundaries_sync_running": "Boundary sync already running",
+        "err_boundaries_poll_running": "A flight coverage poll is currently running",
+        "err_funai_download_failed": "FUNAI WFS download failed; cannot proceed without indigenous territory data",
+        # Settings validation errors
+        "err_value_bool": "Value must be true or false",
+        "err_value_one_of": "Value must be one of: {choices}",
+        "err_unsupported_list_values": "Unsupported list values: {values}",
+        "err_value_min": "Value must be at least {min}",
+        "err_value_max": "Value must be at most {max}",
+        "err_invalid_email": "Invalid email address(es): {emails}",
+        "err_controlled_by_env": "{key} is controlled by environment variable {env}",
+        # Day names for emailer
+        "day_sunday": "Sunday",
+        "day_monday": "Monday",
+        "day_tuesday": "Tuesday",
+        "day_wednesday": "Wednesday",
+        "day_thursday": "Thursday",
+        "day_friday": "Friday",
+        "day_saturday": "Saturday",
     },
 }
+
+DAY_KEYS = [
+    "day_sunday", "day_monday", "day_tuesday", "day_wednesday",
+    "day_thursday", "day_friday", "day_saturday",
+]
 
 
 def t(key: str, lang: str = "en") -> str:
     """Translate a key to the specified language."""
     translations = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
     return translations.get(key, TRANSLATIONS["en"].get(key, key))
+
+
+def get_translations() -> dict[str, dict[str, str]]:
+    """Return the full translation dictionaries for the frontend."""
+    return TRANSLATIONS
 
 
 def translate_event_type(event_type: str, lang: str = "pt") -> str:
@@ -414,11 +602,8 @@ def translate_category(category: str, lang: str = "pt") -> str:
     return t(key, lang)
 
 
-def get_aircraft_type_url(aircraft_type: str | None) -> str | None:
-    """Get a URL for aircraft type information."""
-    if not aircraft_type:
-        return None
-    return f"https://www.flightradar24.com/data/aircraft/{aircraft_type.lower()}"
-
-
-
+def translate_weekday(index: int, lang: str = "pt") -> str:
+    """Translate weekday index (0=Sunday) to localized name."""
+    if 0 <= index < 7:
+        return t(DAY_KEYS[index], lang)
+    return str(index)

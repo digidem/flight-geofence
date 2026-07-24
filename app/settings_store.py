@@ -9,10 +9,15 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .config import env_settings
 from .database import delete_db_setting, get_db_setting, set_db_setting
+from .i18n import t
 
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PROVIDER_CHOICES = ("adsb_lol", "airplanes_live", "adsbexchange", "flightradar24")
+
+
+def _lang() -> str:
+    return str(get_setting("language") or "pt")
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,7 @@ SETTING_DEFS: dict[str, SettingDef] = {
     "alert_recipients": SettingDef(
         "ALERT_RECIPIENTS", ["luandro@gmail.com"], kind="email_list"
     ),
+    "dashboard_base_url": SettingDef("DASHBOARD_BASE_URL", ""),
     "email_provider": SettingDef(
         "EMAIL_PROVIDER", "console", choices=("console", "resend", "smtp")
     ),
@@ -123,26 +129,26 @@ def _parse(raw: Any, definition: SettingDef) -> Any:
         else:
             normalized = str(raw).strip().lower()
             if normalized not in {"true", "false", "1", "0", "yes", "no", "on", "off"}:
-                raise ValueError("Value must be true or false")
+                raise ValueError(t("err_value_bool", _lang()))
             value = normalized in {"true", "1", "yes", "on"}
     else:
         value = str(raw).strip()
 
     if definition.choices and value not in definition.choices:
-        raise ValueError(f"Value must be one of: {', '.join(definition.choices)}")
+        raise ValueError(t("err_value_one_of", _lang()).replace("{choices}", ", ".join(definition.choices)))
     if definition.item_choices:
         unknown = sorted(set(value) - set(definition.item_choices))
         if unknown:
-            raise ValueError(f"Unsupported list values: {', '.join(unknown)}")
+            raise ValueError(t("err_unsupported_list_values", _lang()).replace("{values}", ", ".join(unknown)))
         value = list(dict.fromkeys(value))
     if definition.minimum is not None and value < definition.minimum:
-        raise ValueError(f"Value must be at least {definition.minimum:g}")
+        raise ValueError(t("err_value_min", _lang()).replace("{min}", f"{definition.minimum:g}"))
     if definition.maximum is not None and value > definition.maximum:
-        raise ValueError(f"Value must be at most {definition.maximum:g}")
+        raise ValueError(t("err_value_max", _lang()).replace("{max}", f"{definition.maximum:g}"))
     if definition.kind == "email_list":
         invalid = [address for address in value if not EMAIL_RE.match(address)]
         if invalid:
-            raise ValueError(f"Invalid email address(es): {', '.join(invalid)}")
+            raise ValueError(t("err_invalid_email", _lang()).replace("{emails}", ", ".join(invalid)))
         value = list(dict.fromkeys(address.lower() for address in value))
     return value
 
@@ -191,7 +197,7 @@ def setting_source(key: str) -> str:
 def set_setting(key: str, value: Any) -> None:
     definition = SETTING_DEFS[key]
     if _env_raw(definition) is not None:
-        raise ValueError(f"{key} is controlled by environment variable {definition.env}")
+        raise ValueError(t("err_controlled_by_env", _lang()).replace("{key}", key).replace("{env}", definition.env))
     parsed = _parse(value, definition)
     token = _fernet().encrypt(json.dumps(parsed).encode("utf-8")).decode("ascii")
     set_db_setting(key, token)
@@ -200,7 +206,7 @@ def set_setting(key: str, value: Any) -> None:
 def clear_setting(key: str) -> None:
     definition = SETTING_DEFS[key]
     if _env_raw(definition) is not None:
-        raise ValueError(f"{key} is controlled by environment variable {definition.env}")
+        raise ValueError(t("err_controlled_by_env", _lang()).replace("{key}", key).replace("{env}", definition.env))
     delete_db_setting(key)
 
 
