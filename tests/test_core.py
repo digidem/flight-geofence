@@ -73,10 +73,10 @@ def test_readsb_timestamp_milliseconds_and_validation():
 
 
 def test_fr24_numeric_timestamp_parsing():
-    from app.providers.providers import _parse_fr24_timestamp
+    from app.providers.fr24 import parse_fr24_timestamp
 
-    seconds = _parse_fr24_timestamp(1_700_000_000)
-    milliseconds = _parse_fr24_timestamp(1_700_000_000_000)
+    seconds = parse_fr24_timestamp(1_700_000_000)
+    milliseconds = parse_fr24_timestamp(1_700_000_000_000)
     assert seconds is not None and seconds.year == 2023
     assert milliseconds == seconds
 

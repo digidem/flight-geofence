@@ -619,6 +619,52 @@ def areas_by_ids(ids: list[str]) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def record_fr24_request(
+    billing_cycle_id: str,
+    endpoint: str,
+    cluster_id: str | None,
+    http_outcome: str,
+    records_returned: int,
+    estimated_credits: int,
+    latency_ms: int | None,
+    retry_count: int,
+    possibly_truncated: bool,
+) -> None:
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO fr24_request_log(
+                id, requested_at, billing_cycle_id, endpoint, cluster_id,
+                http_outcome, records_returned, estimated_credits, reported_credits,
+                latency_ms, retry_count, possibly_truncated
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                str(uuid.uuid4()),
+                utc_now_iso(),
+                billing_cycle_id,
+                endpoint,
+                cluster_id,
+                http_outcome,
+                records_returned,
+                estimated_credits,
+                None,
+                latency_ms,
+                retry_count,
+                1 if possibly_truncated else 0,
+            ),
+        )
+
+
+def credits_used_this_cycle(billing_cycle_id: str) -> int:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(estimated_credits),0) FROM fr24_request_log WHERE billing_cycle_id=?",
+            (billing_cycle_id,),
+        ).fetchone()
+    return int(row[0])
+
+
 def record_config_audit(
     key: str, old_value: Any, new_value: Any, changed_by: str, secret: bool = False
 ) -> None:

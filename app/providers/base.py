@@ -22,3 +22,4 @@ class AircraftObservation:
     origin: str | None = None
     destination: str | None = None
     operator: str | None = None
+    fr24_id: str | None = None

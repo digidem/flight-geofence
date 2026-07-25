@@ -244,6 +244,7 @@ TRANSLATIONS = {
         "err_adsbexchange_key_missing": "Chave da API ADS-B Exchange ausente",
         "err_unsupported_readsb_provider": "Provedor readsb não suportado",
         "err_flightradar24_key_missing": "Chave da API Flightradar24 ausente",
+        "err_flightradar24_grid_retired": "O Flightradar24 não é mais consultado pela grade geral de regiões. Configure os clusters FR24 e habilite FR24_ENABLED.",
         "err_unknown_provider": "Provedor desconhecido",
         "err_select_areas_first": "Selecione áreas e gere regiões de cobertura primeiro",
         # Boundary sync errors
@@ -506,6 +507,7 @@ TRANSLATIONS = {
         "err_adsbexchange_key_missing": "ADS-B Exchange API key is missing",
         "err_unsupported_readsb_provider": "Unsupported readsb provider",
         "err_flightradar24_key_missing": "Flightradar24 API key is missing",
+        "err_flightradar24_grid_retired": "Flightradar24 is no longer polled through the general region grid. Configure FR24 clusters and enable FR24_ENABLED instead.",
         "err_unknown_provider": "Unknown provider",
         "err_select_areas_first": "Select areas and generate coverage regions first",
         # Boundary sync errors

@@ -16,7 +16,7 @@ from ..database import (
 )
 from ..settings_store import get_setting
 from .base import AircraftObservation
-from .readsb import normalize_readsb, number
+from .readsb import normalize_readsb
 
 logger = logging.getLogger(__name__)
 
@@ -158,103 +158,11 @@ async def _readsb_region(
     return observations
 
 
-def _parse_fr24_timestamp(value) -> datetime | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        if timestamp > 10_000_000_000:
-            timestamp /= 1000
-        try:
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        except (OSError, OverflowError, ValueError):
-            return None
-    text = str(value).strip()
-    if text.replace(".", "", 1).isdigit():
-        return _parse_fr24_timestamp(float(text))
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-
-
-async def _fr24_region(
-    client: httpx.AsyncClient,
-    region: dict,
-) -> list[AircraftObservation]:
-    key = get_setting("flightradar24_api_key")
-    if not key:
-        raise ProviderFailure(t("err_flightradar24_key_missing", _lang()))
-
-    payload = await _get_json(
-        client,
-        "https://fr24api.flightradar24.com/api/live/flight-positions/full",
-        params={
-            "bounds": (
-                f"{region['north']},{region['south']},"
-                f"{region['west']},{region['east']}"
-            ),
-            "limit": 1000,
-        },
-        headers={
-            **_headers(),
-            "Authorization": f"Bearer {key}",
-            "Accept-Version": "v1",
-        },
-        provider="flightradar24",
-    )
-
-    observations: list[AircraftObservation] = []
-    current = datetime.now(timezone.utc)
-    for raw in payload.get("data", []):
-        # fr24_id is not an ICAO 24-bit identifier and is unsuitable as a cross-provider key.
-        aircraft_hex = str(raw.get("hex") or "").strip().lower()
-        latitude = number(raw.get("lat"))
-        longitude = number(raw.get("lon"))
-        if (
-            not aircraft_hex
-            or latitude is None
-            or longitude is None
-            or not -90 <= latitude <= 90
-            or not -180 <= longitude <= 180
-        ):
-            continue
-        observed = _parse_fr24_timestamp(raw.get("timestamp")) or current
-        age = max(0.0, (current - observed).total_seconds())
-        if age > env_settings().position_max_age_seconds:
-            continue
-        altitude = number(raw.get("alt"))
-        observations.append(
-            AircraftObservation(
-                hex=aircraft_hex,
-                callsign=str(raw.get("callsign") or raw.get("flight") or "").strip().upper() or None,
-                registration=str(raw.get("reg") or "").strip().upper() or None,
-                aircraft_type=str(raw.get("type") or "").strip().upper() or None,
-                latitude=latitude,
-                longitude=longitude,
-                altitude_ft=altitude,
-                on_ground=bool(raw.get("on_ground")) or altitude == 0,
-                ground_speed_kt=number(raw.get("gspeed")),
-                track_deg=number(raw.get("track")),
-                observed_at=observed,
-                seen_pos_seconds=age,
-                region_id=region["id"],
-                provider="flightradar24",
-                source_type=str(raw.get("source") or "") or None,
-                origin=str(raw.get("orig_icao") or raw.get("orig_iata") or "") or None,
-                destination=str(raw.get("dest_icao") or raw.get("dest_iata") or "") or None,
-                operator=str(raw.get("operating_as") or raw.get("painted_as") or "") or None,
-            )
-        )
-    return observations
-
-
 async def fetch_provider_region(provider: str, region: dict) -> list[AircraftObservation]:
     timeout = httpx.Timeout(env_settings().http_timeout_seconds)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         if provider == "flightradar24":
-            return await _fr24_region(client, region)
+            raise ProviderFailure(t("err_flightradar24_grid_retired", _lang()))
         return await _readsb_region(client, provider, region)
 
 
@@ -266,6 +174,18 @@ async def fetch_all() -> tuple[list[AircraftObservation], set[str], list[str], i
         for provider in get_setting("flight_providers")
         if provider in PROVIDER_INFO
     ] or ["adsb_lol"]
+    if "flightradar24" in providers:
+        # Must be filtered out here, before the all-providers-must-succeed
+        # check below is built -- leaving it in the loop would make every
+        # region permanently fail that check (flightradar24 can never
+        # succeed in this grid anymore), which would silently disable
+        # disappearance detection for every OTHER enabled provider too.
+        logger.warning(
+            "flightradar24 is configured in FLIGHT_PROVIDERS but is no longer polled "
+            "through the general region grid; configure FR24 clusters and enable "
+            "FR24_ENABLED instead. Skipping it this cycle."
+        )
+        providers = [provider for provider in providers if provider != "flightradar24"]
 
     observations: dict[str, AircraftObservation] = {}
     successful_by_region: dict[str, set[str]] = {
@@ -279,10 +199,7 @@ async def fetch_all() -> tuple[list[AircraftObservation], set[str], list[str], i
         for provider in providers:
             for region in regions:
                 try:
-                    if provider == "flightradar24":
-                        items = await _fr24_region(client, region)
-                    else:
-                        items = await _readsb_region(client, provider, region)
+                    items = await _readsb_region(client, provider, region)
                     successful_by_region[region["id"]].add(provider)
                     requests_successful += 1
                     for item in items:
