@@ -109,6 +109,40 @@ def test_settings_environment_precedence_and_validation(monkeypatch):
         pass
 
 
+def test_fr24_categories_reject_empty_list():
+    # An empty category list means "no server-side filter" to FR24 -- the
+    # most expensive configuration, not the safest -- so it must be rejected.
+    from app.settings_store import set_setting
+
+    try:
+        set_setting("fr24_default_categories", [])
+        raise AssertionError("empty FR24 category list should be rejected")
+    except ValueError:
+        pass
+
+
+def test_fr24_response_limit_capped_at_plan_maximum():
+    from app.settings_store import set_setting
+
+    try:
+        set_setting("fr24_response_limit", 1000)
+        raise AssertionError("response limit above the Explorer plan cap should be rejected")
+    except ValueError:
+        pass
+    set_setting("fr24_response_limit", 20)
+
+
+def test_fr24_poll_interval_floor_matches_design_cadence():
+    from app.settings_store import set_setting
+
+    try:
+        set_setting("fr24_poll_interval_seconds", 60)
+        raise AssertionError("poll interval below the documented cadence should be rejected")
+    except ValueError:
+        pass
+    set_setting("fr24_poll_interval_seconds", 300)
+
+
 def test_safe_zip_rejects_path_traversal(tmp_path):
     from app.boundary_sync import _safe_extract
 

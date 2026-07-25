@@ -30,6 +30,24 @@ class EnvSettings(BaseSettings):
     flightradar24_api_key: str = ""
     adsbexchange_api_key: str = ""
 
+    fr24_enabled: str = ""
+    fr24_plan: str = ""
+    fr24_plan_monthly_credits: str = ""
+    fr24_monthly_operating_budget: str = ""
+    fr24_promotional_credits: str = ""
+    fr24_budget_policy: str = ""
+    fr24_poll_interval_seconds: str = ""
+    fr24_inter_cluster_delay_seconds: str = ""
+    fr24_response_limit: str = ""
+    fr24_summary_variant: str = ""
+    fr24_default_categories: str = ""
+    fr24_default_min_altitude_ft: str = ""
+    fr24_default_max_altitude_ft: str = ""
+    fr24_cluster_buffer_km: str = ""
+    fr24_fetch_summary_on_entry: str = ""
+    fr24_fetch_track_on_event: str = ""
+    fr24_usage_sync_enabled: str = ""
+
     database_path: str = "/data/runtime/flight_alerts.db"
     download_dir: str = "/data/downloads"
     boundary_sync_enabled: bool = True
@@ -67,6 +85,7 @@ class EnvSettings(BaseSettings):
     query_radius_nm: float = 200
     query_spacing_factor: float = 1.0
     max_query_regions: int = 250
+    fr24_max_active_clusters: int = 2
     observation_buffer_km: float = 25
     api_request_delay_ms: int = 750
     position_max_age_seconds: int = 150

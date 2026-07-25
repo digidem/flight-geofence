@@ -55,6 +55,63 @@ SETTING_DEFS: dict[str, SettingDef] = {
     "resend_api_key": SettingDef("RESEND_API_KEY", "", secret=True),
     "flightradar24_api_key": SettingDef("FLIGHTRADAR24_API_KEY", "", secret=True),
     "adsbexchange_api_key": SettingDef("ADSBEXCHANGE_API_KEY", "", secret=True),
+    "fr24_enabled": SettingDef("FR24_ENABLED", False, kind="bool"),
+    "fr24_plan": SettingDef("FR24_PLAN", "explorer", choices=("explorer",)),
+    "fr24_plan_monthly_credits": SettingDef(
+        "FR24_PLAN_MONTHLY_CREDITS", 30000, kind="int", minimum=1, maximum=10000000
+    ),
+    "fr24_monthly_operating_budget": SettingDef(
+        "FR24_MONTHLY_OPERATING_BUDGET", 28000, kind="int", minimum=1, maximum=10000000
+    ),
+    "fr24_promotional_credits": SettingDef(
+        "FR24_PROMOTIONAL_CREDITS", 0, kind="int", minimum=0, maximum=10000000
+    ),
+    "fr24_budget_policy": SettingDef(
+        "FR24_BUDGET_POLICY",
+        "warn_only",
+        choices=("warn_only", "pause_fr24", "continue_until_provider_rejects"),
+    ),
+    "fr24_poll_interval_seconds": SettingDef(
+        # Minimum matches the documented design cadence (FLIGHTRADAR_API.md sec. 7).
+        # Below 300s, two clusters exceed the Explorer allocation from empty polls
+        # alone, before a single aircraft is ever returned.
+        "FR24_POLL_INTERVAL_SECONDS", 300, kind="int", minimum=300, maximum=86400
+    ),
+    "fr24_inter_cluster_delay_seconds": SettingDef(
+        "FR24_INTER_CLUSTER_DELAY_SECONDS", 2, kind="int", minimum=0, maximum=60
+    ),
+    "fr24_response_limit": SettingDef(
+        # Maximum matches the Explorer plan's documented hard cap (FLIGHTRADAR_API.md
+        # sec. 2/9). A higher value here would misestimate credits and corrupt
+        # possibly_truncated detection once the provider clamps or rejects it.
+        "FR24_RESPONSE_LIMIT", 20, kind="int", minimum=1, maximum=20
+    ),
+    "fr24_summary_variant": SettingDef(
+        "FR24_SUMMARY_VARIANT", "full", choices=("full", "light")
+    ),
+    "fr24_default_categories": SettingDef(
+        "FR24_DEFAULT_CATEGORIES",
+        ["T", "H", "N"],
+        kind="list",
+        item_choices=("P", "C", "M", "J", "T", "H", "B", "G", "D", "V", "O", "N"),
+        minimum=1,
+    ),
+    "fr24_default_min_altitude_ft": SettingDef(
+        "FR24_DEFAULT_MIN_ALTITUDE_FT", -2000.0, kind="float", minimum=-2000, maximum=60000
+    ),
+    "fr24_default_max_altitude_ft": SettingDef(
+        "FR24_DEFAULT_MAX_ALTITUDE_FT", 10000.0, kind="float", minimum=-2000, maximum=60000
+    ),
+    "fr24_cluster_buffer_km": SettingDef(
+        "FR24_CLUSTER_BUFFER_KM", 15.0, kind="float", minimum=1, maximum=100
+    ),
+    "fr24_fetch_summary_on_entry": SettingDef(
+        "FR24_FETCH_SUMMARY_ON_ENTRY", True, kind="bool"
+    ),
+    "fr24_fetch_track_on_event": SettingDef(
+        "FR24_FETCH_TRACK_ON_EVENT", False, kind="bool"
+    ),
+    "fr24_usage_sync_enabled": SettingDef("FR24_USAGE_SYNC_ENABLED", True, kind="bool"),
     "smtp_host": SettingDef("SMTP_HOST", "smtp.gmail.com"),
     "smtp_port": SettingDef("SMTP_PORT", 587, kind="int", minimum=1, maximum=65535),
     "smtp_username": SettingDef("SMTP_USERNAME", ""),
@@ -141,9 +198,14 @@ def _parse(raw: Any, definition: SettingDef) -> Any:
         if unknown:
             raise ValueError(t("err_unsupported_list_values", _lang()).replace("{values}", ", ".join(unknown)))
         value = list(dict.fromkeys(value))
-    if definition.minimum is not None and value < definition.minimum:
+    # For list/email_list kinds, minimum/maximum bound the item count, not the
+    # list itself -- an empty list can be a valid (or a dangerous) value
+    # depending on the setting, so this must be explicit rather than falling
+    # through to a comparison that would raise TypeError.
+    bounded = len(value) if definition.kind in {"list", "email_list"} else value
+    if definition.minimum is not None and bounded < definition.minimum:
         raise ValueError(t("err_value_min", _lang()).replace("{min}", f"{definition.minimum:g}"))
-    if definition.maximum is not None and value > definition.maximum:
+    if definition.maximum is not None and bounded > definition.maximum:
         raise ValueError(t("err_value_max", _lang()).replace("{max}", f"{definition.maximum:g}"))
     if definition.kind == "email_list":
         invalid = [address for address in value if not EMAIL_RE.match(address)]

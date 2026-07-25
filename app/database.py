@@ -195,6 +195,105 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(day,provider)
             );
+
+            CREATE TABLE IF NOT EXISTS fr24_clusters (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+                buffer_km REAL NOT NULL,
+                min_altitude_ft REAL NOT NULL,
+                max_altitude_ft REAL NOT NULL,
+                categories_json TEXT NOT NULL,
+                calc_north REAL,
+                calc_south REAL,
+                calc_west REAL,
+                calc_east REAL,
+                manual_north REAL,
+                manual_south REAL,
+                manual_west REAL,
+                manual_east REAL,
+                use_manual_bounds INTEGER NOT NULL DEFAULT 0 CHECK(use_manual_bounds IN (0,1)),
+                geometry_version_hash TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_poll_at TEXT,
+                last_response_count INTEGER,
+                last_estimated_credits INTEGER,
+                last_error TEXT
+            );
+
+            -- area_id intentionally has no FK to areas(id): a hard FK either
+            -- cascade-deletes membership silently when replace_areas() churns
+            -- an area's id (e.g. geometry-hash id after a boundary correction),
+            -- or blocks the routine weekly boundary sync outright. Membership
+            -- validity against currently-selected areas is checked and
+            -- surfaced explicitly by the cluster geometry/regeneration code.
+            CREATE TABLE IF NOT EXISTS fr24_cluster_areas (
+                cluster_id TEXT NOT NULL REFERENCES fr24_clusters(id) ON DELETE CASCADE,
+                area_id TEXT NOT NULL,
+                PRIMARY KEY (cluster_id, area_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fr24_cluster_areas_area ON fr24_cluster_areas(area_id);
+
+            CREATE TABLE IF NOT EXISTS fr24_poll_runs (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                success INTEGER NOT NULL DEFAULT 0 CHECK(success IN (0,1)),
+                clusters_json TEXT NOT NULL,
+                clusters_successful INTEGER NOT NULL DEFAULT 0,
+                aircraft_returned INTEGER NOT NULL DEFAULT 0,
+                events_created INTEGER NOT NULL DEFAULT 0,
+                estimated_credits INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_fr24_poll_runs_started ON fr24_poll_runs(started_at DESC);
+
+            CREATE TABLE IF NOT EXISTS fr24_request_log (
+                id TEXT PRIMARY KEY,
+                requested_at TEXT NOT NULL,
+                billing_cycle_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                cluster_id TEXT,
+                http_outcome TEXT NOT NULL,
+                records_returned INTEGER NOT NULL DEFAULT 0,
+                estimated_credits INTEGER NOT NULL DEFAULT 0,
+                reported_credits INTEGER,
+                latency_ms INTEGER,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                possibly_truncated INTEGER NOT NULL DEFAULT 0 CHECK(possibly_truncated IN (0,1))
+            );
+            CREATE INDEX IF NOT EXISTS idx_fr24_request_log_cycle ON fr24_request_log(billing_cycle_id);
+            CREATE INDEX IF NOT EXISTS idx_fr24_request_log_time ON fr24_request_log(requested_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_fr24_request_log_endpoint ON fr24_request_log(endpoint);
+            CREATE INDEX IF NOT EXISTS idx_fr24_request_log_cluster ON fr24_request_log(cluster_id);
+
+            CREATE TABLE IF NOT EXISTS fr24_enrichment (
+                aircraft_hex TEXT NOT NULL,
+                episode_id TEXT NOT NULL,
+                fr24_id TEXT,
+                attempted_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                source TEXT,
+                received_at TEXT,
+                payload_json TEXT,
+                fr24_received_at TEXT,
+                PRIMARY KEY (aircraft_hex, episode_id)
+            );
+
+            -- Writers must store '[redacted]' for old_value/new_value whenever
+            -- SETTING_DEFS[key].secret is true -- this table is plaintext and
+            -- unlike app_settings is never Fernet-encrypted.
+            CREATE TABLE IF NOT EXISTS config_audit_log (
+                id TEXT PRIMARY KEY,
+                changed_at TEXT NOT NULL,
+                key TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                secret INTEGER NOT NULL DEFAULT 0 CHECK(secret IN (0,1)),
+                changed_by TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_config_audit_log_key ON config_audit_log(key);
             """
         )
         # Upgrade existing v0.3 volumes in place.
