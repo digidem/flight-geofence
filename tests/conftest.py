@@ -35,6 +35,12 @@ def clean_database():
             "aircraft_state",
             "events",
             "provider_requests",
+            "fr24_cluster_areas",
+            "fr24_clusters",
+            "fr24_poll_runs",
+            "fr24_request_log",
+            "fr24_enrichment",
+            "config_audit_log",
         ):
             conn.execute(f"DELETE FROM {table}")
     yield

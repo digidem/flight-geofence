@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -531,6 +532,118 @@ def get_query_regions() -> list[dict[str, Any]]:
     with db() as conn:
         rows = conn.execute("SELECT * FROM query_regions ORDER BY id").fetchall()
     return [dict(row) for row in rows]
+
+
+def save_fr24_cluster(cluster: dict[str, Any]) -> None:
+    cluster = dict(cluster)
+    now = utc_now_iso()
+    cluster.setdefault("created_at", now)
+    cluster["updated_at"] = now
+    columns = list(cluster)
+    placeholders = ",".join("?" for _ in columns)
+    updates = ",".join(
+        f"{column}=excluded.{column}" for column in columns if column not in ("id", "created_at")
+    )
+    with db() as conn:
+        conn.execute(
+            f"INSERT INTO fr24_clusters({','.join(columns)}) VALUES({placeholders}) "
+            f"ON CONFLICT(id) DO UPDATE SET {updates}",
+            [cluster[column] for column in columns],
+        )
+
+
+def get_fr24_cluster(cluster_id: str) -> dict[str, Any] | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM fr24_clusters WHERE id=?", (cluster_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_fr24_clusters() -> list[dict[str, Any]]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM fr24_clusters ORDER BY created_at").fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_fr24_cluster(cluster_id: str) -> bool:
+    with db() as conn:
+        cursor = conn.execute("DELETE FROM fr24_clusters WHERE id=?", (cluster_id,))
+    return cursor.rowcount > 0
+
+
+def set_fr24_cluster_areas(cluster_id: str, area_ids: list[str]) -> None:
+    unique_ids = list(dict.fromkeys(area_ids))
+    with db() as conn:
+        conn.execute("DELETE FROM fr24_cluster_areas WHERE cluster_id=?", (cluster_id,))
+        if unique_ids:
+            conn.executemany(
+                "INSERT INTO fr24_cluster_areas(cluster_id, area_id) VALUES(?,?)",
+                [(cluster_id, area_id) for area_id in unique_ids],
+            )
+
+
+def fr24_cluster_area_ids(cluster_id: str) -> list[str]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT area_id FROM fr24_cluster_areas WHERE cluster_id=? ORDER BY area_id",
+            (cluster_id,),
+        ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def fr24_cluster_missing_area_ids(cluster_id: str) -> list[str]:
+    """Member area ids that no longer exist in the areas table. There is no DB
+    foreign key enforcing this (see Chunk 1 commit message for why), so this
+    must be checked explicitly by callers such as cluster regeneration."""
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT fca.area_id FROM fr24_cluster_areas fca
+            LEFT JOIN areas a ON a.id = fca.area_id
+            WHERE fca.cluster_id=? AND a.id IS NULL
+            ORDER BY fca.area_id
+            """,
+            (cluster_id,),
+        ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def areas_by_ids(ids: list[str]) -> list[dict[str, Any]]:
+    unique_ids = list(dict.fromkeys(ids))
+    if not unique_ids:
+        return []
+    placeholders = ",".join("?" for _ in unique_ids)
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM areas WHERE id IN ({placeholders})", unique_ids
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def record_config_audit(
+    key: str, old_value: Any, new_value: Any, changed_by: str, secret: bool = False
+) -> None:
+    # Never trust the caller's `secret` flag alone for a known SETTING_DEFS
+    # key -- deriving it here means a caller forgetting secret=True for
+    # flightradar24_api_key/smtp_password/etc. still can't leak it in
+    # cleartext. Deferred import: settings_store already imports this module.
+    from .settings_store import SETTING_DEFS
+
+    definition = SETTING_DEFS.get(key)
+    is_secret = secret or bool(definition and definition.secret)
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO config_audit_log(id, changed_at, key, old_value, new_value, secret, changed_by) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (
+                str(uuid.uuid4()),
+                utc_now_iso(),
+                key,
+                "[redacted]" if is_secret else (None if old_value is None else str(old_value)),
+                "[redacted]" if is_secret else (None if new_value is None else str(new_value)),
+                1 if is_secret else 0,
+                changed_by,
+            ),
+        )
 
 
 def _upsert_run(table: str, run: dict[str, Any]) -> None:
