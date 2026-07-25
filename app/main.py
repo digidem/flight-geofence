@@ -44,8 +44,9 @@ from .database import (
 )
 from .detection import classify_aircraft, process_missing, process_observation
 from .emailer import send_event_email
-from .i18n import get_translations, t
+from .fr24_scheduler import fr24_polling_loop
 from .geofences import GeofenceIndex
+from .i18n import get_translations, t
 from .locks import exclusive_job_lock
 from .providers import PROVIDER_INFO, fetch_all, test_provider
 from .settings_store import (
@@ -293,7 +294,11 @@ async def lifespan(app: FastAPI):
     init_db()
     background_tasks.clear()
     background_tasks.extend(
-        [asyncio.create_task(boundary_loop()), asyncio.create_task(polling_loop())]
+        [
+            asyncio.create_task(boundary_loop()),
+            asyncio.create_task(polling_loop()),
+            asyncio.create_task(fr24_polling_loop()),
+        ]
     )
     yield
     for task in background_tasks:

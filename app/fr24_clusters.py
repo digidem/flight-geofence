@@ -74,7 +74,7 @@ def clusters_overlap(a: dict[str, float], b: dict[str, float]) -> bool:
     )
 
 
-def _bounds_of(cluster: dict[str, Any]) -> dict[str, float] | None:
+def bounds_of(cluster: dict[str, Any]) -> dict[str, float] | None:
     # Require all four fields present -- a partially-populated row (e.g. a
     # degenerate compute_cluster_bounds() result that got stored as some
     # fields NULL) must be treated as "not computed", never passed through
@@ -105,8 +105,8 @@ def active_cluster_overlaps(clusters: list[dict[str, Any]]) -> list[tuple[str, s
     pairs: list[tuple[str, str]] = []
     for i in range(len(enabled)):
         for j in range(i + 1, len(enabled)):
-            bounds_a = _bounds_of(enabled[i])
-            bounds_b = _bounds_of(enabled[j])
+            bounds_a = bounds_of(enabled[i])
+            bounds_b = bounds_of(enabled[j])
             if bounds_a and bounds_b and clusters_overlap(bounds_a, bounds_b):
                 pairs.append((enabled[i]["id"], enabled[j]["id"]))
     return pairs

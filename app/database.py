@@ -665,6 +665,88 @@ def credits_used_this_cycle(billing_cycle_id: str) -> int:
     return int(row[0])
 
 
+def save_fr24_poll_run(run: dict[str, Any]) -> None:
+    _upsert_run("fr24_poll_runs", run)
+
+
+def latest_fr24_poll() -> dict[str, Any] | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM fr24_poll_runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_fr24_cluster_telemetry(
+    cluster_id: str,
+    last_poll_at: str | None,
+    last_response_count: int | None,
+    last_estimated_credits: int | None,
+    last_error: str | None,
+) -> None:
+    # Targeted column update only -- NOT a full-row save of a scheduler-
+    # snapshotted cluster dict. A cycle can run for the duration of two
+    # HTTP requests; overwriting the whole row with a start-of-cycle
+    # snapshot would silently revert any config change (enabled, bounds,
+    # categories) an operator makes concurrently through the admin API.
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE fr24_clusters SET
+                last_poll_at=?, last_response_count=?, last_estimated_credits=?, last_error=?
+            WHERE id=?
+            """,
+            (last_poll_at, last_response_count, last_estimated_credits, last_error, cluster_id),
+        )
+
+
+def get_fr24_enrichment(aircraft_hex: str, episode_id: str) -> dict[str, Any] | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM fr24_enrichment WHERE aircraft_hex=? AND episode_id=?",
+            (aircraft_hex, episode_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def save_fr24_enrichment(
+    aircraft_hex: str,
+    episode_id: str,
+    fr24_id: str | None,
+    status: str,
+    payload: dict[str, Any] | None,
+) -> None:
+    now = utc_now_iso()
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO fr24_enrichment(
+                aircraft_hex, episode_id, fr24_id, attempted_at, status, source,
+                received_at, payload_json, fr24_received_at
+            ) VALUES(?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(aircraft_hex, episode_id) DO UPDATE SET
+                fr24_id=excluded.fr24_id,
+                attempted_at=excluded.attempted_at,
+                status=excluded.status,
+                source=excluded.source,
+                received_at=excluded.received_at,
+                payload_json=excluded.payload_json,
+                fr24_received_at=excluded.fr24_received_at
+            """,
+            (
+                aircraft_hex,
+                episode_id,
+                fr24_id,
+                now,
+                status,
+                "flight-summary/full",
+                now if payload else None,
+                json.dumps(payload) if payload else None,
+                now,
+            ),
+        )
+
+
 def record_config_audit(
     key: str, old_value: Any, new_value: Any, changed_by: str, secret: bool = False
 ) -> None:
