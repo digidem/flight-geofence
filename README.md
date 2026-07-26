@@ -718,4 +718,4 @@ For code changes:
 
 ## License
 
-**UNLICENSED.** No open-source license has been assigned to this repository yet. All rights are reserved unless and until a license file is added.
+This project is licensed under the [MIT License](LICENSE). See `LICENSE` for the full text.
