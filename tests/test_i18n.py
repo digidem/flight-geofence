@@ -58,7 +58,8 @@ class TestTranslationKeyParity:
         same = {k for k in tr["en"] if tr["en"][k] == tr["pt"].get(k, "")}
         # Legitimately identical: product name, universal terms, city names
         legitimately_same = {"app_title", "email_altitude", "tz_manaus", "tz_belem",
-                             "tz_riobranco", "tz_noronha", "err_boundaries_sync_running"}
+                             "tz_riobranco", "tz_noronha", "err_boundaries_sync_running",
+                             "nav_fr24", "fr24_subtitle"}
         same -= legitimately_same
         assert not same, f"Keys with identical EN/PT values (possibly untranslated): {same}"
 

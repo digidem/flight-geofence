@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import json
 import logging
 import secrets
@@ -9,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from . import fr24_credits
 from .auth import check_password, require_auth
 from .boundary_sync import sync_boundaries
 from .config import env_settings
@@ -24,31 +27,50 @@ from .coverage import regenerate_query_regions
 from .database import (
     active_states,
     area_counts,
+    areas_by_ids,
     bulk_area_selection,
     cleanup_provider_events,
     cleanup_stale_states,
+    credits_used_this_cycle,
     database_ok,
+    delete_fr24_cluster,
     event_counts,
+    fr24_cluster_area_ids,
+    fr24_cluster_missing_area_ids,
+    get_fr24_cluster,
     get_query_regions,
     init_db,
+    latest_fr24_poll,
     latest_poll,
     latest_sync,
     list_areas,
     list_events,
+    list_fr24_clusters,
+    record_config_audit,
     retryable_email_events,
     review_event,
+    save_fr24_cluster,
     save_poll_run,
     selected_area_ids,
     set_area_selection,
+    set_fr24_cluster_areas,
     update_event_email,
 )
 from .detection import classify_aircraft, process_missing, process_observation
 from .emailer import send_event_email
+from .fr24_clusters import (
+    active_cluster_overlaps,
+    bounds_of,
+    compute_cluster_bounds,
+    geometry_version_hash,
+    validate_manual_bounds,
+)
 from .fr24_scheduler import fr24_polling_loop
 from .geofences import GeofenceIndex
 from .i18n import get_translations, t
 from .locks import exclusive_job_lock
 from .providers import PROVIDER_INFO, fetch_all, test_provider
+from .providers.fr24 import FR24Failure, fetch_light
 from .settings_store import (
     SETTING_DEFS,
     clear_setting,
@@ -90,6 +112,22 @@ class ReviewPayload(BaseModel):
 class SettingsPayload(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     clear: list[str] = Field(default_factory=list, max_length=100)
+
+
+class FR24ClusterPayload(BaseModel):
+    id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    enabled: bool = True
+    buffer_km: float = Field(ge=1, le=100)
+    min_altitude_ft: float = Field(ge=-2000, le=60000)
+    max_altitude_ft: float = Field(ge=-2000, le=60000)
+    categories: list[str] = Field(default_factory=lambda: ["T", "H", "N"], max_length=12)
+    area_ids: list[str] = Field(default_factory=list, max_length=500)
+    use_manual_bounds: bool = False
+    manual_north: float | None = None
+    manual_south: float | None = None
+    manual_west: float | None = None
+    manual_east: float | None = None
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -624,3 +662,216 @@ async def event_review(request: Request, event_id: str, payload: ReviewPayload):
     if not review_event(event_id, payload.status, payload.notes):
         raise HTTPException(status_code=400, detail=t("err_invalid_review", lang))
     return {"updated": True}
+
+
+@app.get("/api/fr24/clusters")
+async def fr24_clusters_get(request: Request):
+    require_auth(request)
+    clusters = list_fr24_clusters()
+    result = []
+    for cluster in clusters:
+        item = dict(cluster)
+        item["area_ids"] = fr24_cluster_area_ids(cluster["id"])
+        item["missing_area_ids"] = fr24_cluster_missing_area_ids(cluster["id"])
+        item["categories"] = json.loads(cluster["categories_json"])
+        result.append(item)
+    return {
+        "clusters": result,
+        "overlap_warnings": active_cluster_overlaps(clusters),
+        "max_active_clusters": cfg.fr24_max_active_clusters,
+    }
+
+
+@app.post("/api/fr24/clusters")
+async def fr24_clusters_save(request: Request, payload: FR24ClusterPayload):
+    require_auth(request)
+    if payload.id is not None:
+        try:
+            uuid.UUID(payload.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cluster id") from exc
+
+    unknown_categories = sorted(set(payload.categories) - fr24_credits.CATEGORY_ENUM)
+    if unknown_categories:
+        raise HTTPException(status_code=400, detail=f"Unknown categories: {', '.join(unknown_categories)}")
+    if not payload.categories:
+        raise HTTPException(status_code=400, detail="At least one category is required")
+    if payload.min_altitude_ft >= payload.max_altitude_ft:
+        raise HTTPException(status_code=400, detail="min_altitude_ft must be less than max_altitude_ft")
+
+    existing = list_fr24_clusters()
+    active_count = len([c for c in existing if c.get("enabled") and c["id"] != payload.id])
+    if payload.enabled and active_count + 1 > cfg.fr24_max_active_clusters:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {cfg.fr24_max_active_clusters} active clusters allowed",
+        )
+
+    if payload.use_manual_bounds:
+        bounds_values = (payload.manual_north, payload.manual_south, payload.manual_west, payload.manual_east)
+        if None in bounds_values:
+            raise HTTPException(status_code=400, detail="Manual bounds require all four values")
+        try:
+            validate_manual_bounds(*bounds_values)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    areas = areas_by_ids(payload.area_ids) if payload.area_ids else []
+    if payload.enabled and not areas and not payload.use_manual_bounds:
+        # An enabled cluster with neither member areas nor manual bounds has
+        # no bounds to poll at all -- it would occupy one of the (at most 2)
+        # active cluster slots, report a nonzero credit baseline as if it
+        # were operational, and the scheduler would just error on it every
+        # cycle. Reject rather than silently accept a cluster that can never
+        # actually monitor anything.
+        raise HTTPException(
+            status_code=400,
+            detail="An enabled cluster needs at least one member area or manual bounds",
+        )
+    calc_bounds = None
+    if areas:
+        try:
+            calc_bounds = compute_cluster_bounds([a["geometry_json"] for a in areas], payload.buffer_km)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cluster_id = payload.id or str(uuid.uuid4())
+    manual_bounds_tuple = (
+        (payload.manual_north, payload.manual_south, payload.manual_west, payload.manual_east)
+        if payload.use_manual_bounds
+        else None
+    )
+    version_hash = geometry_version_hash(
+        [a["id"] for a in areas],
+        [str(a.get("updated_at") or "") for a in areas],
+        payload.buffer_km,
+        manual_bounds_tuple,
+    )
+
+    old_cluster = get_fr24_cluster(cluster_id)
+    cluster_record = {
+        "id": cluster_id,
+        "name": payload.name,
+        "enabled": 1 if payload.enabled else 0,
+        "buffer_km": payload.buffer_km,
+        "min_altitude_ft": payload.min_altitude_ft,
+        "max_altitude_ft": payload.max_altitude_ft,
+        "categories_json": json.dumps(payload.categories),
+        "calc_north": calc_bounds["north"] if calc_bounds else None,
+        "calc_south": calc_bounds["south"] if calc_bounds else None,
+        "calc_west": calc_bounds["west"] if calc_bounds else None,
+        "calc_east": calc_bounds["east"] if calc_bounds else None,
+        "manual_north": payload.manual_north,
+        "manual_south": payload.manual_south,
+        "manual_west": payload.manual_west,
+        "manual_east": payload.manual_east,
+        "use_manual_bounds": 1 if payload.use_manual_bounds else 0,
+        "geometry_version_hash": version_hash,
+    }
+    save_fr24_cluster(cluster_record)
+    set_fr24_cluster_areas(cluster_id, payload.area_ids)
+    record_config_audit(
+        f"fr24_cluster:{cluster_id}",
+        json.dumps(old_cluster) if old_cluster else None,
+        json.dumps(cluster_record),
+        "admin",
+    )
+    return {"id": cluster_id, "calc_bounds": calc_bounds}
+
+
+@app.delete("/api/fr24/clusters/{cluster_id}")
+async def fr24_cluster_delete_endpoint(request: Request, cluster_id: str):
+    require_auth(request)
+    old_cluster = get_fr24_cluster(cluster_id)
+    if not delete_fr24_cluster(cluster_id):
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    record_config_audit(
+        f"fr24_cluster:{cluster_id}",
+        json.dumps(old_cluster) if old_cluster else None,
+        None,
+        "admin",
+    )
+    return {"deleted": True}
+
+
+@app.get("/api/fr24/status")
+async def fr24_status(request: Request):
+    require_auth(request)
+    clusters = list_fr24_clusters()
+    enabled_clusters = [c for c in clusters if c.get("enabled")]
+    bcid = fr24_credits.billing_cycle_id(datetime.now(timezone.utc))
+    used = credits_used_this_cycle(bcid)
+    operating_budget = int(get_setting("fr24_monthly_operating_budget"))
+    poll_interval = int(get_setting("fr24_poll_interval_seconds"))
+    baseline = (
+        fr24_credits.all_empty_baseline(len(enabled_clusters), poll_interval)
+        if enabled_clusters
+        else 0
+    )
+
+    now = datetime.now(timezone.utc)
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    elapsed_fraction = (now.day - 1 + now.hour / 24) / days_in_month if days_in_month else 0
+    projected = fr24_credits.projected_end_of_cycle_credits(used, elapsed_fraction)
+
+    return {
+        "enabled": bool(get_setting("fr24_enabled")),
+        "active_clusters": len(enabled_clusters),
+        "max_active_clusters": cfg.fr24_max_active_clusters,
+        "plan_monthly_credits": int(get_setting("fr24_plan_monthly_credits")),
+        "operating_budget": operating_budget,
+        "promotional_credits": int(get_setting("fr24_promotional_credits")) or None,
+        "credits_used_this_cycle": used,
+        "budget_state": fr24_credits.budget_state(used, operating_budget),
+        "all_empty_baseline": baseline,
+        "projected_end_of_cycle_credits": projected,
+        "billing_cycle_id": bcid,
+        "latest_poll": latest_fr24_poll(),
+        "overlap_warnings": active_cluster_overlaps(clusters),
+    }
+
+
+@app.post("/api/fr24/test")
+async def fr24_test(request: Request):
+    require_auth(request)
+    bcid = fr24_credits.billing_cycle_id(datetime.now(timezone.utc))
+    used = credits_used_this_cycle(bcid)
+    operating_budget = int(get_setting("fr24_monthly_operating_budget"))
+    budget_state = fr24_credits.budget_state(used, operating_budget)
+    policy = get_setting("fr24_budget_policy")
+    if policy == "pause_fr24" and budget_state == "exhausted":
+        # Matches the scheduler's own hard block exactly (see
+        # app/fr24_scheduler.py) -- a manual test call shouldn't be able to
+        # spend in a state the automatic loop itself refuses to spend in.
+        raise HTTPException(status_code=400, detail="FR24 budget exhausted (policy=pause_fr24)")
+    clusters = [c for c in list_fr24_clusters() if c.get("enabled")]
+    if not clusters:
+        raise HTTPException(status_code=400, detail="Configure at least one enabled FR24 cluster first")
+    cluster = clusters[0]
+    bounds = bounds_of(cluster)
+    if bounds is None:
+        raise HTTPException(status_code=400, detail="Cluster has no computed bounds yet")
+    categories = json.loads(cluster["categories_json"])
+    timeout = httpx.Timeout(cfg.http_timeout_seconds)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            result = await fetch_light(
+                client,
+                north=bounds["north"],
+                south=bounds["south"],
+                west=bounds["west"],
+                east=bounds["east"],
+                categories=categories,
+                min_altitude_ft=cluster["min_altitude_ft"],
+                max_altitude_ft=cluster["max_altitude_ft"],
+                limit=1,
+                cluster_id=cluster["id"],
+                billing_cycle_id=fr24_credits.billing_cycle_id(datetime.now(timezone.utc)),
+            )
+    except FR24Failure as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "cluster_id": cluster["id"],
+        "aircraft_found": result.raw_count,
+        "estimated_credits": result.estimated_credits,
+    }

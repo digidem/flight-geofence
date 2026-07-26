@@ -131,6 +131,132 @@ function metric(label, value, note) {
   return `<article class="metric"><div class="metric-label">${escapeHtml(label)}</div><div class="metric-value">${escapeHtml(value)}</div><div class="metric-note">${escapeHtml(note)}</div></article>`;
 }
 
+function fr24ClusterBoundsText(cluster) {
+  const bounds = cluster.use_manual_bounds
+    ? [cluster.manual_north, cluster.manual_south, cluster.manual_west, cluster.manual_east]
+    : [cluster.calc_north, cluster.calc_south, cluster.calc_west, cluster.calc_east];
+  if (bounds.some((value) => value === null || value === undefined)) return t("fr24_bounds_pending");
+  return `N ${bounds[0]} · S ${bounds[1]} · W ${bounds[2]} · E ${bounds[3]}`;
+}
+
+function fr24ClusterCard(cluster) {
+  const missing = cluster.missing_area_ids && cluster.missing_area_ids.length
+    ? `<p class="error">${t("fr24_missing_areas")}: ${cluster.missing_area_ids.length}</p>`
+    : "";
+  const errorLine = cluster.last_error ? `<p class="error">${escapeHtml(cluster.last_error)}</p>` : "";
+  return `<article class="review-card" data-id="${escapeHtml(cluster.id)}">
+    <div>
+      <strong>${escapeHtml(cluster.name)}</strong>${cluster.enabled ? "" : ` · <span class="muted">${t("fr24_disabled")}</span>`}
+      <p class="muted">${fr24ClusterBoundsText(cluster)}</p>
+      <p class="muted">${t("fr24_cluster_areas")}: ${cluster.area_ids.length} · ${t("fr24_last_poll")}: ${cluster.last_poll_at ? formatTime(cluster.last_poll_at) : "—"} · ${t("fr24_last_credits")}: ${cluster.last_estimated_credits ?? "—"}</p>
+      ${errorLine}${missing}
+    </div>
+    <button class="button ghost dark fr24-edit">${t("fr24_edit")}</button>
+    <button class="button ghost dark fr24-delete">${t("fr24_delete")}</button>
+  </article>`;
+}
+
+function fr24AreaPickerRows(selectedIds) {
+  // Deliberately NOT appState.areas: that list reflects whatever search/
+  // category filter is currently active on the "Protected areas" tab (or a
+  // 500-row page of it). Rendering the picker from a filtered/paginated
+  // list would mean any member area outside the current filter never shows
+  // a checkbox at all -- and since submit only collects checked boxes that
+  // ARE rendered, saving would silently drop that membership. This picker
+  // always uses the dedicated, unfiltered fr24SelectedAreas fetch instead.
+  const areas = appState.fr24SelectedAreas || [];
+  if (!areas.length) return `<p class="muted">${t("fr24_no_selected_areas")}</p>`;
+  return areas
+    .map(
+      (area) =>
+        `<label class="check"><input type="checkbox" class="fr24-area-checkbox" value="${escapeHtml(area.id)}" ${selectedIds.includes(area.id) ? "checked" : ""}> ${escapeHtml(area.name)}</label>`,
+    )
+    .join("");
+}
+
+function fr24PopulateForm(cluster) {
+  const form = $("#fr24-cluster-form");
+  form.elements.namedItem("id").value = cluster.id;
+  form.elements.namedItem("name").value = cluster.name;
+  form.elements.namedItem("buffer_km").value = cluster.buffer_km;
+  form.elements.namedItem("min_altitude_ft").value = cluster.min_altitude_ft;
+  form.elements.namedItem("max_altitude_ft").value = cluster.max_altitude_ft;
+  form.elements.namedItem("enabled").checked = Boolean(cluster.enabled);
+  $$("input[name='categories']").forEach((box) => {
+    box.checked = cluster.categories.includes(box.value);
+  });
+  form.elements.namedItem("use_manual_bounds").checked = Boolean(cluster.use_manual_bounds);
+  $("#fr24-manual-bounds-fields").hidden = !cluster.use_manual_bounds;
+  form.elements.namedItem("manual_north").value = cluster.manual_north ?? "";
+  form.elements.namedItem("manual_south").value = cluster.manual_south ?? "";
+  form.elements.namedItem("manual_west").value = cluster.manual_west ?? "";
+  form.elements.namedItem("manual_east").value = cluster.manual_east ?? "";
+  $("#fr24-area-picker").innerHTML = fr24AreaPickerRows(cluster.area_ids || []);
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function fr24ResetForm() {
+  const form = $("#fr24-cluster-form");
+  form.reset();
+  form.elements.namedItem("id").value = "";
+  $("#fr24-manual-bounds-fields").hidden = true;
+  $("#fr24-area-picker").innerHTML = fr24AreaPickerRows([]);
+}
+
+async function loadFr24() {
+  // Dedicated, unfiltered, selected-only fetch for the area picker -- must
+  // never depend on the "Protected areas" tab's own search/category filter
+  // or on whether that tab has even been visited this session.
+  const selectedAreasResult = await api("/api/areas?selected=true&limit=500");
+  appState.fr24SelectedAreas = selectedAreasResult.items;
+  const [status, clustersResult] = await Promise.all([
+    api("/api/fr24/status"),
+    api("/api/fr24/clusters"),
+  ]);
+  $("#fr24-status").innerHTML = [
+    metric(t("fr24_enabled_label"), status.enabled ? t("fr24_yes") : t("fr24_no"), ""),
+    metric(t("fr24_active_clusters"), `${status.active_clusters}/${status.max_active_clusters}`, ""),
+    metric(t("fr24_budget_state"), status.budget_state, ""),
+    metric(t("fr24_credits_used"), `${status.credits_used_this_cycle} / ${status.operating_budget}`, status.billing_cycle_id),
+    metric(t("fr24_baseline"), String(status.all_empty_baseline), ""),
+    metric(
+      t("fr24_projected"),
+      status.projected_end_of_cycle_credits === null
+        ? t("fr24_insufficient_data")
+        : String(Math.round(status.projected_end_of_cycle_credits)),
+      "",
+    ),
+  ].join("");
+  $("#fr24-overlap-warning").textContent = status.overlap_warnings.length
+    ? `${t("fr24_overlap_warning")}: ${status.overlap_warnings.map((pair) => pair.join(" / ")).join(", ")}`
+    : "";
+
+  appState.fr24Clusters = clustersResult.clusters;
+  $("#fr24-cluster-list").innerHTML = clustersResult.clusters.length
+    ? clustersResult.clusters.map(fr24ClusterCard).join("")
+    : `<p class="muted">${t("fr24_no_clusters")}</p>`;
+  $$("#fr24-cluster-list .review-card").forEach((card) => {
+    const cluster = clustersResult.clusters.find((item) => item.id === card.dataset.id);
+    if (!cluster) return;
+    card.querySelector(".fr24-edit").addEventListener("click", () => fr24PopulateForm(cluster));
+    card.querySelector(".fr24-delete").addEventListener("click", async () => {
+      if (!window.confirm(`${t("fr24_delete")}: ${cluster.name}?`)) return;
+      try {
+        await api(`/api/fr24/clusters/${encodeURIComponent(cluster.id)}`, { method: "DELETE" });
+        await loadFr24();
+      } catch (error) {
+        window.alert(error.message);
+      }
+    });
+  });
+
+  // Re-render the area picker preserving whatever's currently checked
+  // (rather than always resetting) so a re-render triggered mid-edit --
+  // e.g. by the language toggle -- doesn't discard an in-progress selection.
+  const currentlyChecked = $$(".fr24-area-checkbox:checked").map((box) => box.value);
+  $("#fr24-area-picker").innerHTML = fr24AreaPickerRows(currentlyChecked);
+}
+
 function eventLabel(type) {
   return type === "PROBABLE_STOP" ? t("event_probable_stop") : t("event_disappearance");
 }
@@ -607,6 +733,7 @@ $("#lang-toggle").addEventListener("click", async () => {
     if (view === "areas") await loadAreas();
     if (view === "events") await loadReviews();
     if (view === "settings") await loadSettings();
+    if (view === "fr24") await loadFr24();
   }
   if (appState.csrfToken) {
     try {
@@ -624,6 +751,7 @@ $$(".tab").forEach((tab) => {
     if (tab.dataset.view === "areas") await loadAreas();
     if (tab.dataset.view === "events") await loadReviews();
     if (tab.dataset.view === "settings") await loadSettings();
+    if (tab.dataset.view === "fr24") await loadFr24();
   });
 });
 
@@ -655,6 +783,67 @@ $("#settings-display")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const payload = formPayload(event.currentTarget);
   saveForm(event.currentTarget, payload);
+});
+
+$("#fr24-manual-bounds")?.addEventListener("change", (event) => {
+  $("#fr24-manual-bounds-fields").hidden = !event.currentTarget.checked;
+});
+
+$("#fr24-cluster-reset")?.addEventListener("click", fr24ResetForm);
+
+$("#fr24-cluster-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const resultBox = form.querySelector(".form-result");
+  const payload = {
+    id: form.elements.namedItem("id").value || null,
+    name: form.elements.namedItem("name").value,
+    enabled: form.elements.namedItem("enabled").checked,
+    buffer_km: Number(form.elements.namedItem("buffer_km").value),
+    min_altitude_ft: Number(form.elements.namedItem("min_altitude_ft").value),
+    max_altitude_ft: Number(form.elements.namedItem("max_altitude_ft").value),
+    categories: $$("input[name='categories']:checked").map((box) => box.value),
+    area_ids: $$(".fr24-area-checkbox:checked").map((box) => box.value),
+    use_manual_bounds: form.elements.namedItem("use_manual_bounds").checked,
+    manual_north: form.elements.namedItem("manual_north").value
+      ? Number(form.elements.namedItem("manual_north").value)
+      : null,
+    manual_south: form.elements.namedItem("manual_south").value
+      ? Number(form.elements.namedItem("manual_south").value)
+      : null,
+    manual_west: form.elements.namedItem("manual_west").value
+      ? Number(form.elements.namedItem("manual_west").value)
+      : null,
+    manual_east: form.elements.namedItem("manual_east").value
+      ? Number(form.elements.namedItem("manual_east").value)
+      : null,
+  };
+  try {
+    await api("/api/fr24/clusters", { method: "POST", body: JSON.stringify(payload) });
+    resultBox.textContent = t("settings_saved");
+    fr24ResetForm();
+    await loadFr24();
+  } catch (error) {
+    resultBox.textContent = error.message;
+  }
+});
+
+$("#fr24-test")?.addEventListener("click", async (event) => {
+  // This is a paid, real FR24 call -- disable the button for the duration
+  // so a double-click (or an impatient repeat click while the first request
+  // is still in flight) can't trigger two billed requests.
+  const button = event.currentTarget;
+  const resultBox = $("#fr24-test-result");
+  button.disabled = true;
+  resultBox.textContent = t("fr24_testing");
+  try {
+    const result = await api("/api/fr24/test", { method: "POST" });
+    resultBox.textContent = `${t("fr24_test_success")}: ${result.aircraft_found} ${t("fr24_aircraft_found")}, ${result.estimated_credits} ${t("fr24_credits")}`;
+  } catch (error) {
+    resultBox.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 });
 
 init().catch((error) => {
