@@ -6,6 +6,7 @@ import httpx
 import pytest
 from shapely.geometry import Polygon, mapping
 
+import app.fr24_scheduler as fr24_scheduler_mod
 from app.database import (
     get_fr24_enrichment,
     get_state,
@@ -17,6 +18,19 @@ from app.database import (
 from app.fr24_credits import billing_cycle_id
 from app.fr24_scheduler import fr24_lock, run_fr24_cycle
 from app.settings_store import set_setting
+
+
+@pytest.fixture(autouse=True)
+def _reset_fr24_scheduler_module_state():
+    # fr24_scheduler.py has two in-memory, process-wide throttle globals
+    # (_last_usage_sync, _last_count_calibration) that would otherwise leak
+    # state between tests -- e.g. a usage-sync test setting a recent
+    # timestamp would make a LATER test's "not synced in 24h" check pass
+    # trivially, silently making that test vacuous regardless of the
+    # setting/logic it's actually meant to exercise.
+    fr24_scheduler_mod._last_usage_sync = None
+    fr24_scheduler_mod._last_count_calibration = {}
+    yield
 
 
 def _selected_area_record(area_id="funai:test", name="Test Area"):
@@ -192,6 +206,11 @@ def test_duplicate_aircraft_merged(mock_fr24_transport):
     # dedicated tests below and would add a third (Summary Full) call here,
     # since this aircraft has an fr24_id and lands inside the selected area.
     set_setting("fr24_fetch_summary_on_entry", False)
+    # Usage sync defaults to enabled and would add a third (Usage) call on
+    # this, its first cycle in the test (fresh module state per-test via
+    # the autouse reset fixture) -- disable it here since it isn't what
+    # this test is exercising.
+    set_setting("fr24_usage_sync_enabled", False)
     replace_areas([_selected_area_record()], auto_select_all=True)
     save_fr24_cluster(_enabled_cluster("c1"))
     save_fr24_cluster(_enabled_cluster("c2"))
@@ -531,3 +550,84 @@ def test_budget_warning_suppresses_enrichment(mock_fr24_transport):
     result = asyncio.run(run_fr24_cycle())
     assert result["success"] == 1
     assert len(summary_calls) == 0
+
+
+# --- Truncation triggers an exceptional Count calibration call ---
+
+
+def test_truncation_triggers_count_calibration(mock_fr24_transport):
+    _enable_fr24()
+    set_setting("fr24_response_limit", 20)
+    save_fr24_cluster(_enabled_cluster("c1"))
+    items = [_valid_raw(hex=f"abc{i:03d}") for i in range(20)]
+    count_calls = []
+
+    def handler(request):
+        if "/flight-positions/count" in str(request.url):
+            count_calls.append(1)
+            return _json_response({"count": 42})
+        return _json_response({"data": items})
+
+    mock_fr24_transport(handler)
+    result = asyncio.run(run_fr24_cycle())
+    assert len(count_calls) == 1
+    # Successful calibration is diagnostic, not an error -- it's logged via
+    # fr24.count.calibrated, not surfaced in error_message (which is
+    # reserved for actual failures/truncation warnings).
+    assert result["error_message"] == "c1: possibly truncated (20 records)"
+
+
+def test_non_truncated_response_does_not_call_count(mock_fr24_transport):
+    _enable_fr24()
+    save_fr24_cluster(_enabled_cluster("c1"))
+    count_calls = []
+
+    def handler(request):
+        if "/flight-positions/count" in str(request.url):
+            count_calls.append(1)
+            return _json_response({"count": 0})
+        return _json_response({"data": []})
+
+    mock_fr24_transport(handler)
+    asyncio.run(run_fr24_cycle())
+    assert len(count_calls) == 0
+
+
+# --- Daily usage sync ---
+
+
+def test_usage_sync_called_once_per_cycle_when_enabled(mock_fr24_transport):
+    _enable_fr24()
+    set_setting("fr24_usage_sync_enabled", True)
+    save_fr24_cluster(_enabled_cluster("c1"))
+    usage_calls = []
+
+    def handler(request):
+        if "/usage" in str(request.url):
+            usage_calls.append(1)
+            return _json_response({"period": "24h"})
+        return _json_response({"data": []})
+
+    mock_fr24_transport(handler)
+    asyncio.run(run_fr24_cycle())
+    assert len(usage_calls) == 1
+    # A second cycle within the same 24h window must not sync again.
+    asyncio.run(run_fr24_cycle())
+    assert len(usage_calls) == 1
+
+
+def test_usage_sync_disabled_by_setting(mock_fr24_transport):
+    _enable_fr24()
+    set_setting("fr24_usage_sync_enabled", False)
+    save_fr24_cluster(_enabled_cluster("c1"))
+    usage_calls = []
+
+    def handler(request):
+        if "/usage" in str(request.url):
+            usage_calls.append(1)
+            return _json_response({"period": "24h"})
+        return _json_response({"data": []})
+
+    mock_fr24_transport(handler)
+    asyncio.run(run_fr24_cycle())
+    assert len(usage_calls) == 0

@@ -88,6 +88,14 @@ def _event(
         "reason": reason,
         "confidence": "medium",
         "provider": observation.provider,
+        # The observation's own timestamp (when FR24 reported this position),
+        # not now() -- for a DISAPPEARED event in particular, process_missing
+        # builds a synthetic observation from the last real sighting, which
+        # can be many cycles (and many minutes) older than event creation
+        # time, and occurred_at already captures "when we created this row".
+        "fr24_received_at": (
+            observation.observed_at.isoformat() if observation.provider == "flightradar24" else None
+        ),
         "phase": phase,
         "email_status": (
             "pending"

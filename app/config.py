@@ -47,6 +47,7 @@ class EnvSettings(BaseSettings):
     fr24_fetch_summary_on_entry: str = ""
     fr24_fetch_track_on_event: str = ""
     fr24_usage_sync_enabled: str = ""
+    fr24_auto_delete_enabled: str = ""
 
     database_path: str = "/data/runtime/flight_alerts.db"
     download_dir: str = "/data/downloads"
@@ -93,6 +94,12 @@ class EnvSettings(BaseSettings):
     user_agent: str = "flight-geofence-poc/0.4 contact=luandro@gmail.com"
     scheduler_initial_delay_seconds: int = 20
     state_retention_days: int = 14
+    # Only enforced when fr24_auto_delete_enabled is true (default false).
+    # FLIGHTRADAR_API.md sec. 17's 30-day deletion requirement has a built-in
+    # exception "unless a different written agreement exists" -- this
+    # deployment's operator has confirmed governmental authority to retain
+    # FR24-derived data indefinitely, so auto-deletion defaults off rather
+    # than silently deleting data the operator is legally entitled to keep.
     fr24_retention_days: int = 29
 
     min_inside_observations_for_stop: str = ""

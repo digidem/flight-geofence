@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -36,12 +36,21 @@ from .fr24_clusters import bounds_of
 from .geofences import GeofenceIndex
 from .locks import exclusive_job_lock
 from .providers.base import AircraftObservation
-from .providers.fr24 import FR24Failure, fetch_light, fetch_summary_full
+from .providers.fr24 import FR24Failure, fetch_count, fetch_light, fetch_summary_full, fetch_usage
 from .settings_store import get_setting
 
 logger = logging.getLogger(__name__)
 
 fr24_lock = asyncio.Lock()
+# In-memory only -- a process restart just re-syncs slightly early, which is
+# harmless for a read-only diagnostic call that isn't part of any budget or
+# detection decision.
+_last_usage_sync: datetime | None = None
+# Per-cluster throttle for Count calibration: a cluster that truncates every
+# cycle must not fire Count every cycle too (spec section 22: "Count is
+# exceptional rather than routine") -- at most once per hour per cluster.
+_last_count_calibration: dict[str, datetime] = {}
+_COUNT_CALIBRATION_MIN_INTERVAL = timedelta(hours=1)
 
 
 def _merge_observation(
@@ -117,7 +126,7 @@ async def _enrich_new_candidates(
         # before this call. Mark this episode's attempt as failed (rather
         # than leaving no row at all) so it isn't retried unbounded every
         # single cycle for the life of the episode.
-        logger.warning("FR24 candidate enrichment failed: %s", exc)
+        logger.warning("fr24.enrichment.failed error=%s", exc)
         for aircraft_hex, episode_id, fr24_id in candidates:
             save_fr24_enrichment(
                 aircraft_hex=aircraft_hex,
@@ -139,6 +148,29 @@ async def _enrich_new_candidates(
             status="ok" if payload else "empty",
             payload=payload,
         )
+        logger.info(
+            "fr24.enrichment.completed aircraft_hex=%s outcome=%s", aircraft_hex, "ok" if payload else "empty"
+        )
+
+
+async def _maybe_sync_usage(client: httpx.AsyncClient) -> None:
+    """At most once per 24h: fetch FR24's own reported usage for
+    reconciliation against our estimated_credits totals. Read-only,
+    diagnostic -- never gates budget or detection decisions.
+    """
+    global _last_usage_sync
+    if not get_setting("fr24_usage_sync_enabled"):
+        return
+    now = datetime.now(UTC)
+    if _last_usage_sync is not None and now - _last_usage_sync < timedelta(hours=24):
+        return
+    try:
+        usage_24h = await fetch_usage(client, "24h")
+        _last_usage_sync = now
+        logger.info("fr24.usage.reconciled period=24h outcome=ok summary=%s", usage_24h)
+    except Exception as exc:
+        # Diagnostic only -- must never break the poll cycle.
+        logger.warning("fr24.usage.reconciled period=24h outcome=failed error=%s", exc)
 
 
 async def run_fr24_cycle() -> dict:
@@ -166,6 +198,7 @@ async def _run_fr24_cycle_locked() -> dict:
         "error_message": None,
     }
     save_fr24_poll_run(run)
+    logger.info("fr24.poll.started cycle_id=%s", cycle_id)
 
     if not get_setting("fr24_enabled"):
         run.update({"completed_at": utc_now_iso(), "error_message": "FR24 disabled"})
@@ -204,8 +237,9 @@ async def _run_fr24_cycle_locked() -> dict:
         # would otherwise accumulate cost with zero operator-visible signal
         # (no dashboard exists yet -- this log line is the only one today).
         logger.warning(
-            "FR24 budget state=%s (used=%s/%s, policy=%s) -- nonessential "
-            "calls (enrichment) suppressed this cycle",
+            "fr24.budget.warning cycle_id=%s budget_state=%s used=%s operating_budget=%s "
+            "policy=%s -- nonessential calls (enrichment, usage sync) suppressed this cycle",
+            cycle_id,
             budget,
             used,
             operating_budget,
@@ -246,10 +280,56 @@ async def _run_fr24_cycle_locked() -> dict:
                         errors.append(
                             f"{cluster['id']}: possibly truncated ({result.raw_count} records)"
                         )
+                        logger.warning(
+                            "fr24.poll.truncated cycle_id=%s cluster_id=%s record_count=%s",
+                            cycle_id,
+                            cluster["id"],
+                            result.raw_count,
+                        )
                         # Per FLIGHTRADAR_API.md sec. 9: a possibly-truncated
-                        # result must not advance disappearance for this cluster.
+                        # result must not advance disappearance for this
+                        # cluster. Count itself is throttled per cluster
+                        # (sec. 22: "exceptional rather than routine") -- a
+                        # cluster truncating every cycle must not fire Count
+                        # every cycle too.
+                        last_calibration = _last_count_calibration.get(cluster["id"])
+                        now_ts = datetime.now(UTC)
+                        if (
+                            last_calibration is None
+                            or now_ts - last_calibration >= _COUNT_CALIBRATION_MIN_INTERVAL
+                        ):
+                            try:
+                                count = await fetch_count(
+                                    client,
+                                    north=bounds["north"],
+                                    south=bounds["south"],
+                                    west=bounds["west"],
+                                    east=bounds["east"],
+                                    categories=categories,
+                                    min_altitude_ft=cluster["min_altitude_ft"],
+                                    max_altitude_ft=cluster["max_altitude_ft"],
+                                    cluster_id=cluster["id"],
+                                    billing_cycle_id=billing_cycle_id,
+                                )
+                                _last_count_calibration[cluster["id"]] = now_ts
+                                logger.info(
+                                    "fr24.count.calibrated cluster_id=%s count=%s", cluster["id"], count
+                                )
+                            except FR24Failure as count_exc:
+                                # A Count failure must not invalidate the
+                                # already-received Light records; the cycle
+                                # just stays incomplete for disappearance
+                                # logic (already true, this cluster was
+                                # excluded from successful_regions above).
+                                logger.warning(
+                                    "FR24 count calibration failed for %s: %s",
+                                    cluster["id"],
+                                    count_exc,
+                                )
                     else:
                         successful_regions.add(cluster["id"])
+                        if result.raw_count == 0:
+                            logger.info("fr24.poll.empty cycle_id=%s cluster_id=%s", cycle_id, cluster["id"])
                     for obs in result.observations:
                         if _free_grid_actively_tracking(obs.hex):
                             continue
@@ -260,7 +340,9 @@ async def _run_fr24_cycle_locked() -> dict:
                 except FR24Failure as exc:
                     errors.append(f"{cluster['id']}: {exc}")
                     update_fr24_cluster_telemetry(cluster["id"], utc_now_iso(), None, None, str(exc)[:500])
-                    logger.warning("FR24 cluster poll failed %s: %s", cluster["id"], exc)
+                    logger.warning(
+                        "fr24.poll.failed cycle_id=%s cluster_id=%s error=%s", cycle_id, cluster["id"], exc
+                    )
                 if index < len(clusters) - 1:
                     delay = max(0, int(get_setting("fr24_inter_cluster_delay_seconds")))
                     await asyncio.sleep(delay)
@@ -275,6 +357,9 @@ async def _run_fr24_cycle_locked() -> dict:
 
             if get_setting("fr24_fetch_summary_on_entry") and budget == "normal":
                 await _enrich_new_candidates(client, all_observations, billing_cycle_id)
+
+            if budget == "normal":
+                await _maybe_sync_usage(client)
     except Exception as exc:
         logger.exception("FR24 cycle failed")
         run.update({"completed_at": utc_now_iso(), "error_message": str(exc)[:4000]})
@@ -291,6 +376,15 @@ async def _run_fr24_cycle_locked() -> dict:
             "estimated_credits": total_estimated_credits,
             "error_message": "; ".join(errors)[:4000] if errors else None,
         }
+    )
+    logger.info(
+        "fr24.poll.completed cycle_id=%s clusters_successful=%s aircraft_returned=%s "
+        "events_created=%s estimated_credits=%s",
+        cycle_id,
+        len(successful_regions),
+        len(all_observations),
+        events_created,
+        total_estimated_credits,
     )
     save_fr24_poll_run(run)
     return run

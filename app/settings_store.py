@@ -112,6 +112,11 @@ SETTING_DEFS: dict[str, SettingDef] = {
         "FR24_FETCH_TRACK_ON_EVENT", False, kind="bool"
     ),
     "fr24_usage_sync_enabled": SettingDef("FR24_USAGE_SYNC_ENABLED", True, kind="bool"),
+    # Defaults off: FLIGHTRADAR_API.md sec. 17's 30-day deletion requirement
+    # has a written-agreement exception, and this deployment's operator has
+    # confirmed governmental authority to retain FR24 data indefinitely.
+    # Deletion never happens silently -- an operator must explicitly opt in.
+    "fr24_auto_delete_enabled": SettingDef("FR24_AUTO_DELETE_ENABLED", False, kind="bool"),
     "smtp_host": SettingDef("SMTP_HOST", "smtp.gmail.com"),
     "smtp_port": SettingDef("SMTP_PORT", 587, kind="int", minimum=1, maximum=65535),
     "smtp_username": SettingDef("SMTP_USERNAME", ""),

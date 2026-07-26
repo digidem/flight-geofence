@@ -246,8 +246,13 @@ async def _run_coverage_cycle_locked() -> dict:
         "error_message": None,
     }
     save_poll_run(run)
-    cleanup_stale_states(cfg.state_retention_days)
-    cleanup_provider_events("flightradar24", min(cfg.fr24_retention_days, 29))
+    fr24_auto_delete = bool(get_setting("fr24_auto_delete_enabled"))
+    cleanup_stale_states(
+        cfg.state_retention_days,
+        exclude_provider=None if fr24_auto_delete else "flightradar24",
+    )
+    if fr24_auto_delete:
+        cleanup_provider_events("flightradar24", min(cfg.fr24_retention_days, 29))
     # Retry past live notifications even when no coverage regions currently exist,
     # but respect an operator downgrade to Shadow/Review as an immediate mail pause.
     if phase == "live":

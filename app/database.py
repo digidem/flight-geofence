@@ -305,6 +305,10 @@ def init_db() -> None:
         )
         _ensure_column(conn, "events", "email_attempts INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "events", "email_next_attempt_at TEXT")
+        # Provenance only -- no deletion job reads this (see
+        # fr24_auto_delete_enabled and its docstring above `_run_coverage_
+        # cycle_locked`'s cleanup_provider_events call in main.py).
+        _ensure_column(conn, "events", "fr24_received_at TEXT")
 
 
 def database_ok() -> bool:
@@ -852,13 +856,19 @@ def active_states() -> list[dict[str, Any]]:
     return result
 
 
-def cleanup_stale_states(retention_days: int) -> int:
+def cleanup_stale_states(retention_days: int, exclude_provider: str | None = None) -> int:
     cutoff = (utc_now() - timedelta(days=max(1, retention_days))).isoformat()
+    query = "DELETE FROM aircraft_state WHERE area_ids_json='[]' AND updated_at<?"
+    params: list[Any] = [cutoff]
+    if exclude_provider:
+        # This is provider-agnostic by default (last_provider is not FR24-
+        # specific), so a caller that wants to honor FR24's indefinite-
+        # retention setting must pass exclude_provider explicitly -- see
+        # fr24_auto_delete_enabled's usage in main.py.
+        query += " AND (last_provider IS NULL OR last_provider != ?)"
+        params.append(exclude_provider)
     with db() as conn:
-        cursor = conn.execute(
-            "DELETE FROM aircraft_state WHERE area_ids_json='[]' AND updated_at<?",
-            (cutoff,),
-        )
+        cursor = conn.execute(query, params)
     return int(cursor.rowcount)
 
 
