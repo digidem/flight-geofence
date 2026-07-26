@@ -196,7 +196,6 @@ TRANSLATIONS = {
         "provider_adsb_lol_cost": "ADSB.lol — dados abertos/gratuitos",
         "provider_airplanes_live_cost": "Airplanes.live — tier gratuito não-comercial",
         "provider_adsbexchange_cost": "ADS-B Exchange — pago",
-        "provider_flightradar24_cost": "Flightradar24 — créditos pagos",
         # Environment / UI
         "env_controlled": "Controlado por variável de ambiente",
         # Status messages
@@ -209,7 +208,6 @@ TRANSLATIONS = {
         "warn_boundaries_not_synced": "Limites oficiais ainda não sincronizados.",
         "warn_no_areas_selected": "Nenhuma área protegida selecionada.",
         "warn_airplanes_limit": "Airplanes.live exigiria cerca de {n} requisições/dia; o app impõe o limite de 500.",
-        "warn_flightradar_credits": "Flightradar24 cobra por voo retornado; regiões amplas sobrepostas podem consumir créditos rapidamente.",
         "warn_earliest_stop": "Com o intervalo atual, a confirmação de pouso provável mais cedo é de aproximadamente {n} minutos.",
         # Error messages
         "err_sync_running": "Sincronização de limites já em andamento",
@@ -514,7 +512,6 @@ TRANSLATIONS = {
         "provider_adsb_lol_cost": "ADSB.lol — free/open",
         "provider_airplanes_live_cost": "Airplanes.live — free non-commercial",
         "provider_adsbexchange_cost": "ADS-B Exchange — paid",
-        "provider_flightradar24_cost": "Flightradar24 — paid credits",
         # Environment / UI
         "env_controlled": "Controlled by environment variable",
         # Status messages
@@ -527,7 +524,6 @@ TRANSLATIONS = {
         "warn_boundaries_not_synced": "Official boundaries have not been synchronized yet.",
         "warn_no_areas_selected": "No protected areas are selected.",
         "warn_airplanes_limit": "Airplanes.live would require about {n} requests/day; the app enforces its 500-request daily ceiling.",
-        "warn_flightradar_credits": "Flightradar24 charges per returned flight; overlapping broad regions can consume credits quickly.",
         "warn_earliest_stop": "With the current interval, the earliest probable-stop confirmation is roughly {n} minutes.",
         # Error messages
         "err_sync_running": "Boundary sync already running",

@@ -77,8 +77,11 @@ Adapters:
 
 - ADSB.lol;
 - Airplanes.live;
-- ADS-B Exchange Enterprise using `api-auth`;
-- Flightradar24 live full positions using bearer authentication and `Accept-Version: v1`.
+- ADS-B Exchange Enterprise using `api-auth`.
+
+Flightradar24 (Explorer plan) is a separate, cost-controlled adapter — see "Flightradar24
+Explorer plan requirements" below. It is not part of the free-provider query-region grid; its
+legacy unfiltered/unbounded polling path has been retired entirely.
 
 Each adapter must:
 
@@ -91,11 +94,39 @@ Each adapter must:
 
 Airplanes.live must stop before exceeding 500 attempts per UTC day.
 
-When multiple providers are enabled:
+When multiple free providers are enabled:
 
 - merge observations by ICAO hex using the freshest observation;
 - consider a query region fully successful only when every enabled provider succeeded;
 - increment disappearance only for fully successful regions.
+
+## Flightradar24 Explorer plan requirements
+
+- Operate on operator-defined rectangular clusters (buffer-derived from selected areas, or
+  manual WGS84 bounds), never on the free-provider query-region grid, up to a configurable cap on
+  simultaneously active clusters.
+- Poll on an independent schedule and lock, decoupled from the free-provider coverage cycle.
+- Use only the Light positions endpoint for routine polling; estimate cost as 1 credit for an
+  empty response, else 6 credits per returned aircraft record — never `1 + 6 × n`.
+- Call the Count endpoint only exceptionally (a possibly-truncated Light response), throttled to
+  at most once per hour per cluster, never as routine calibration.
+- Fetch Summary Full only for new candidate aircraft entering a monitored area, and only when
+  enabled. Tracks (full flight history) is the most expensive endpoint and is not fetched by any
+  automated path in this release; an on-demand, manually-triggered Tracks lookup is a documented
+  follow-up, not yet implemented.
+- Track a configurable monthly credit budget against actual usage; suppress non-essential calls
+  (enrichment, usage sync) once spend crosses the warning threshold (70%). Escalating budget
+  states above that (critical, hard-limit) are logged but do not themselves stop routine Light
+  polling; only a policy of `pause_fr24` at full exhaustion (100%+) stops the FR24 cycle outright.
+  The default policy (`warn_only`) logs but never stops polling, so operators who need a hard
+  ceiling must set the policy explicitly.
+- Never merge Flightradar24 observations into the free-provider grid's own merge step; instead,
+  when a free provider already holds a fresh, actively-tracked claim on an aircraft, Flightradar24
+  must defer to it rather than overriding it with a possibly-stale or one-off touch.
+- Default to indefinite retention of Flightradar24-sourced events and aircraft state (auto-delete
+  off) when the operator holds documented governmental authority to retain the data — the
+  written-agreement exception to the 30-day storage ceiling below. Auto-delete, when explicitly
+  enabled, still enforces that ceiling.
 
 ## Detection requirements
 
@@ -153,7 +184,9 @@ When multiple providers are enabled:
 - Persist settings, area records/selections, query regions, syncs, polls, aircraft state, events, reviews, request counters, and email retry state.
 - Perform in-place additive schema migration from v0.3.
 - Clean stale outside aircraft state after configurable retention.
-- Delete Flightradar24-sourced events before the provider’s 30-day storage ceiling.
+- Delete Flightradar24-sourced events and aircraft state before the provider's 30-day storage
+  ceiling *unless* the operator has documented governmental authority to retain the data
+  indefinitely (the written-agreement exception), in which case auto-deletion defaults off.
 - Support consistent SQLite online backup.
 - Prevent manual CLI poll/sync from overlapping the server scheduler with cross-process file locks.
 

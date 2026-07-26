@@ -465,8 +465,6 @@ def _warnings(counts: dict, regions: list[dict]) -> list[str]:
     per_provider_daily = int(len(regions) * 86400 / max(interval, 1)) if regions else 0
     if "airplanes_live" in providers and per_provider_daily > 500:
         warnings.append(t("warn_airplanes_limit", lang).replace("{n}", str(per_provider_daily)))
-    if "flightradar24" in providers:
-        warnings.append(t("warn_flightradar_credits", lang))
     if get_setting("operating_phase") == "live":
         warnings.extend(_live_readiness_errors())
     effective_stop_minutes = max(

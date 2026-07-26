@@ -92,11 +92,16 @@ flowchart LR
         EMAIL[Resend or SMTP alert]
     end
 
-    subgraph Feeds[Aircraft-position providers]
+    subgraph Feeds[Free aircraft-position providers]
         LOL[ADSB.lol]
         LIVE[Airplanes.live]
         ADSBX[ADS-B Exchange]
-        FR24[Flightradar24]
+    end
+
+    subgraph FR24Explorer[Flightradar24 Explorer plan — independent loop]
+        CLUSTERS["Operator-defined clusters<br/>rectangular WGS84 bounds"]
+        FR24POLL[Cost-controlled FR24 polling]
+        FR24API[Flightradar24 Explorer API]
     end
 
     FUNAI --> SYNC
@@ -108,11 +113,13 @@ flowchart LR
     POLL --> LOL
     POLL --> LIVE
     POLL --> ADSBX
-    POLL --> FR24
     LOL --> NORMALIZE
     LIVE --> NORMALIZE
     ADSBX --> NORMALIZE
-    FR24 --> NORMALIZE
+    DB --> CLUSTERS
+    CLUSTERS --> FR24POLL
+    FR24POLL --> FR24API
+    FR24API --> GEOFENCE
     NORMALIZE --> GEOFENCE
     DB --> GEOFENCE
     GEOFENCE --> SIGNAL
@@ -130,7 +137,9 @@ flowchart LR
 1. The boundary updater downloads, validates, and filters official FUNAI and CNUC polygons.
 2. The operator selects the territories and conservation units to monitor.
 3. The application generates provider query regions covering those selected polygons.
-4. Enabled providers are polled on a schedule.
+4. Enabled free providers are polled on a schedule; Flightradar24 (if enabled) runs an
+   independent, cost-controlled polling loop over operator-defined rectangular clusters
+   instead of the free-provider query-region grid.
 5. Fresh observations are normalized and merged by ICAO 24-bit hex identifier.
 6. The state engine compares each aircraft with selected polygons and its prior observations.
 7. Only probable-stop and disappearance events are stored.
@@ -315,11 +324,11 @@ NEIGHBOR_DISTANCE_KM=10
 | **ADSB.lol** | Free/open | No | Default source for initial Shadow testing | No published SLA or explicit public production quota |
 | **Airplanes.live** | Free public API | No | Optional comparison source | Non-commercial use; app enforces 500 attempts/day |
 | **ADS-B Exchange Enterprise** | Paid | Yes | Strong candidate for unfiltered ADS-B, Mode S, and MLAT-style data | Enterprise credentials and terms required |
-| **Flightradar24 API** | Paid credits | Yes | Adds broad coverage and route/operator metadata | Broad regions can consume credits; storage is capped by provider terms |
+| **Flightradar24 Explorer plan** | Paid credits, cost-controlled | Yes | Adds broad coverage and route/operator metadata over operator-defined clusters | Runs on its own independent, budget-aware polling loop — see below |
 
-### Multiple providers
+### Multiple free providers
 
-When several providers are enabled, observations are merged by ICAO hex using the freshest valid position. A disappearance cycle advances only when **every enabled provider successfully completes the aircraft's last query region**. This intentionally favors fewer false disappearances over faster alerts.
+When several free providers are enabled, observations are merged by ICAO hex using the freshest valid position. A disappearance cycle advances only when **every enabled free provider successfully completes the aircraft's last query region**. This intentionally favors fewer false disappearances over faster alerts.
 
 ### Configuration examples
 
@@ -329,15 +338,76 @@ ADSB.lol requires no key:
 FLIGHT_PROVIDERS=adsb_lol
 ```
 
-Paid providers:
+Paid free-grid providers:
 
 ```env
-FLIGHT_PROVIDERS=adsb_lol,adsbexchange,flightradar24
+FLIGHT_PROVIDERS=adsb_lol,adsbexchange
 ADSBEXCHANGE_API_KEY=...
-FLIGHTRADAR24_API_KEY=...
 ```
 
 Provider credentials can also be saved through the authenticated interface when their matching environment values are blank.
+
+> [!NOTE]
+> `flightradar24` is no longer a supported value for `FLIGHT_PROVIDERS`. Its unfiltered, unbounded
+> free-grid query path has been retired entirely (it could consume large numbers of credits per
+> poll cycle with no cost ceiling) and it has been removed from the provider picker in the
+> dashboard. If an existing `.env` still lists it, it is silently skipped each cycle with a
+> warning logged rather than blocking the other enabled providers. Flightradar24 is now configured
+> exclusively through the Explorer-plan cluster system described next.
+
+### Flightradar24 Explorer plan (cost-controlled clusters)
+
+Flightradar24 is billed per API call and per aircraft record returned, so it is deliberately kept
+**separate** from the free-provider query-region grid. Instead of following the same polygon-derived
+regions as the free providers, the operator defines one or more rectangular **clusters** (via the
+FR24 tab in the dashboard, or the `/api/fr24/clusters` API) — up to `FR24_MAX_ACTIVE_CLUSTERS`
+(2 by default) enabled at once: a name, a buffer distance around selected areas (or manually
+entered WGS84 bounds), altitude range, and aircraft categories.
+
+Key properties of this integration:
+
+- **Independent polling loop.** FR24 clusters are polled on their own schedule
+  (`FR24_POLL_INTERVAL_SECONDS`), fully decoupled from the free-provider grid's coverage cycle, under
+  its own cross-process lock. The two systems do not merge into one combined observation set: when
+  an aircraft is already being freshly tracked by a free provider, the FR24 loop defers to that
+  claim instead of overriding it, rather than always preferring whichever reading is newest.
+- **Cost-controlled by design.** Routine polling uses only the Light positions endpoint
+  (1 credit if the response is empty, otherwise `6 × aircraft returned`). The Count endpoint is
+  called only exceptionally, throttled to once per hour per cluster, when a cluster's response is
+  possibly truncated by the configured record limit. Summary Full (enrichment) costs more per call
+  and is used sparingly — only for new candidate aircraft entering a monitored area, and only when
+  `FR24_FETCH_SUMMARY_ON_ENTRY` is enabled. Full flight history (Tracks) is the most expensive
+  endpoint and is intentionally **not** fetched by any automated path in this release; wiring up an
+  on-demand, manually-triggered Tracks lookup is tracked as a follow-up.
+- **Budget guardrails.** A configurable monthly credit budget (`FR24_MONTHLY_OPERATING_BUDGET`) is
+  tracked against actual usage. At 70%+ of budget the scheduler suppresses non-essential calls
+  (enrichment, daily usage-sync); at 85%+ and 95%+ it logs escalating warnings only, by default —
+  it does **not** stop routine Light polling on its own. `FR24_BUDGET_POLICY` controls what happens
+  once budget is fully exhausted (100%+): `warn_only` (default) keeps polling and only logs;
+  `pause_fr24` stops the FR24 cycle entirely until the next billing period;
+  `continue_until_provider_rejects` keeps polling regardless and relies on Flightradar24's own API
+  to start rejecting requests. Set `FR24_BUDGET_POLICY=pause_fr24` for an actual hard ceiling.
+- **Data retention.** By default, FR24-derived events and aircraft state are retained
+  indefinitely — auto-deletion is off (`FR24_AUTO_DELETE_ENABLED=false`). FLIGHTRADAR_API.md sec.
+  17 requires deleting Flightradar24 data within 30 days unless a written agreement exists; this
+  deployment's operator has confirmed governmental authority (environmental/Indigenous-land
+  enforcement mandate) to retain the data indefinitely, which is that written-agreement exception.
+  Setting `FR24_AUTO_DELETE_ENABLED=true` re-enables deletion for deployments without that
+  authority: FR24 *events* are deleted after `FR24_RETENTION_DAYS` (capped at 29 days), and FR24
+  *aircraft state* rows are cleaned up under the same general `STATE_RETENTION_DAYS` (default 14
+  days) window used for every other provider's stale state.
+
+```env
+FR24_ENABLED=true
+FLIGHTRADAR24_API_KEY=...
+FR24_POLL_INTERVAL_SECONDS=300
+FR24_MONTHLY_OPERATING_BUDGET=28000
+FR24_BUDGET_POLICY=warn_only
+FR24_AUTO_DELETE_ENABLED=false
+```
+
+See `.env.example` for the complete list of `FR24_*` settings, and the FR24 tab in the dashboard
+for cluster management, live status, and a manual connection test.
 
 ## Detection rules
 
