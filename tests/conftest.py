@@ -17,8 +17,17 @@ os.environ.setdefault("DOWNLOAD_DIR", str(_TEST_ROOT / "downloads"))
 
 import pytest
 
-from app.config import env_settings
+from app.config import EnvSettings, env_settings
 from app.database import db, init_db
+
+# Never read a developer's real .env in tests -- pydantic-settings loads it
+# directly, bypassing os.environ entirely, so any secret-controlled setting
+# (FLIGHTRADAR24_API_KEY, RESEND_API_KEY, SMTP_PASSWORD, ...) populated
+# there would silently lock set_setting() for that key in every test,
+# regardless of the os.environ.setdefault calls above. Matches CI, which
+# has no .env file at all.
+EnvSettings.model_config["env_file"] = None
+env_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
