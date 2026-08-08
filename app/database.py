@@ -305,6 +305,14 @@ def init_db() -> None:
         )
         _ensure_column(conn, "events", "email_attempts INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "events", "email_next_attempt_at TEXT")
+        # Distinguishes "the scheduler woke up but deliberately did nothing"
+        # (kill switch off, no clusters, budget pause) from a real failure.
+        # Without it the dashboard renders benign skips as red "failed" runs.
+        _ensure_column(
+            conn,
+            "fr24_poll_runs",
+            "skipped INTEGER NOT NULL DEFAULT 0 CHECK(skipped IN (0,1))",
+        )
         # Provenance only -- no deletion job reads this (see
         # fr24_auto_delete_enabled and its docstring above `_run_coverage_
         # cycle_locked`'s cleanup_provider_events call in main.py).

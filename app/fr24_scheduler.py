@@ -196,18 +196,35 @@ async def _run_fr24_cycle_locked() -> dict:
         "events_created": 0,
         "estimated_credits": 0,
         "error_message": None,
+        # 1 = the scheduler deliberately did nothing this cycle (kill switch
+        # off, no enabled clusters, budget pause). Kept apart from real
+        # failures so the dashboard doesn't render benign skips as red
+        # "failed" runs.
+        "skipped": 0,
     }
     save_fr24_poll_run(run)
     logger.info("fr24.poll.started cycle_id=%s", cycle_id)
 
     if not get_setting("fr24_enabled"):
-        run.update({"completed_at": utc_now_iso(), "error_message": "FR24 disabled"})
+        run.update(
+            {
+                "completed_at": utc_now_iso(),
+                "error_message": "FR24 disabled",
+                "skipped": 1,
+            }
+        )
         save_fr24_poll_run(run)
         return run
 
     clusters = [c for c in list_fr24_clusters() if c.get("enabled")]
     if not clusters:
-        run.update({"completed_at": utc_now_iso(), "error_message": "no enabled clusters"})
+        run.update(
+            {
+                "completed_at": utc_now_iso(),
+                "error_message": "no enabled clusters",
+                "skipped": 1,
+            }
+        )
         save_fr24_poll_run(run)
         return run
     run["clusters_json"] = json.dumps([c["id"] for c in clusters])
@@ -225,6 +242,7 @@ async def _run_fr24_cycle_locked() -> dict:
                     f"skipped: budget exhausted (policy=pause_fr24, "
                     f"used={used}/{operating_budget})"
                 ),
+                "skipped": 1,
             }
         )
         save_fr24_poll_run(run)

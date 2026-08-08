@@ -19,6 +19,7 @@ from app.fr24_clusters import (
     active_cluster_overlaps,
     clusters_overlap,
     compute_cluster_bounds,
+    coverage_geojson,
     geometry_version_hash,
     validate_manual_bounds,
 )
@@ -249,6 +250,56 @@ def test_compute_cluster_bounds_buffers_in_metric_not_degrees():
     result = compute_cluster_bounds([geom], buffer_km=111)
     assert -56.5 < result["west"] < -55.5
     assert -54.5 < result["east"] < -53.5
+
+
+def _coverage_cluster(**overrides):
+    cluster = {
+        "use_manual_bounds": False,
+        "manual_north": None,
+        "manual_south": None,
+        "manual_west": None,
+        "manual_east": None,
+        "calc_north": -0.85,
+        "calc_south": -1.15,
+        "calc_west": -55.15,
+        "calc_east": -54.85,
+    }
+    cluster.update(overrides)
+    return cluster
+
+
+def test_coverage_geojson_includes_area_and_bounds_features():
+    geometries = {
+        "funai:test": {
+            "name": "Test Area",
+            "geometry_json": _area_geometry(
+                [(-55.1, -1.1), (-54.9, -1.1), (-54.9, -0.9), (-55.1, -0.9), (-55.1, -1.1)]
+            ),
+        }
+    }
+    fc = coverage_geojson(_coverage_cluster(), geometries, ["funai:test"])
+    assert fc is not None
+    assert fc["type"] == "FeatureCollection"
+    roles = [f["properties"]["role"] for f in fc["features"]]
+    assert roles.count("area") == 1
+    assert roles.count("bounds") == 1
+    area_feature = next(f for f in fc["features"] if f["properties"]["role"] == "area")
+    assert area_feature["properties"]["name"] == "Test Area"
+    assert area_feature["geometry"]["type"] == "Polygon"
+
+
+def test_coverage_geojson_none_without_bounds():
+    # No manual bounds and no computed bounds -> nothing meaningful to draw.
+    fc = coverage_geojson(_coverage_cluster(calc_north=None, calc_south=None), {}, [])
+    assert fc is None
+
+
+def test_coverage_geojson_skips_missing_area_ids():
+    # Unknown member ids (already surfaced via missing_area_ids) must not
+    # crash the minimap -- only the bounds rectangle remains.
+    fc = coverage_geojson(_coverage_cluster(), {}, ["funai:ghost"])
+    assert fc is not None
+    assert [f["properties"]["role"] for f in fc["features"]] == ["bounds"]
 
 
 def test_compute_cluster_bounds_degenerate_raises():

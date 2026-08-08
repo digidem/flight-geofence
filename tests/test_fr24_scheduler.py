@@ -137,6 +137,7 @@ def test_two_cluster_success(mock_fr24_transport):
     mock_fr24_transport(handler)
     result = asyncio.run(run_fr24_cycle())
     assert result["success"] == 1
+    assert result["skipped"] == 0
     assert result["clusters_successful"] == 2
 
 
@@ -395,6 +396,9 @@ def test_fr24_disabled(mock_fr24_transport):
     mock_fr24_transport(handler)
     result = asyncio.run(run_fr24_cycle())
     assert result["error_message"] == "FR24 disabled"
+    # Benign skip, not a failure -- the dashboard relies on this flag to
+    # avoid rendering a kill-switched cycle as a red "failed" run.
+    assert result["skipped"] == 1
 
 
 # --- No enabled clusters ---
@@ -409,6 +413,7 @@ def test_no_enabled_clusters(mock_fr24_transport):
     mock_fr24_transport(handler)
     result = asyncio.run(run_fr24_cycle())
     assert result["error_message"] == "no enabled clusters"
+    assert result["skipped"] == 1
 
 
 # --- Budget exhausted with pause_fr24 policy skips the cycle ---
@@ -429,6 +434,7 @@ def test_budget_exhausted_skips_cycle(mock_fr24_transport):
     mock_fr24_transport(handler)
     result = asyncio.run(run_fr24_cycle())
     assert "budget exhausted" in result["error_message"]
+    assert result["skipped"] == 1
 
 
 # --- Positive control: a normal, non-truncated, non-failed cycle DOES advance disappearance ---

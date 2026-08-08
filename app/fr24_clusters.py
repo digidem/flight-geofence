@@ -7,7 +7,7 @@ from typing import Any
 
 from pyproj import Transformer
 from shapely import make_valid
-from shapely.geometry import box, shape
+from shapely.geometry import box, mapping, shape
 from shapely.ops import transform, unary_union
 
 _TO_METRIC = Transformer.from_crs("EPSG:4326", "EPSG:5880", always_xy=True).transform
@@ -110,6 +110,39 @@ def active_cluster_overlaps(clusters: list[dict[str, Any]]) -> list[tuple[str, s
             if bounds_a and bounds_b and clusters_overlap(bounds_a, bounds_b):
                 pairs.append((enabled[i]["id"], enabled[j]["id"]))
     return pairs
+
+
+def coverage_geojson(
+    cluster: dict[str, Any],
+    geometries_by_id: dict[str, dict[str, Any]],
+    area_ids: list[str],
+) -> dict[str, Any] | None:
+    """GeoJSON FeatureCollection for the UI coverage minimap: one 'area' feature
+    per member area (simplified for rendering) plus the 'bounds' rectangle the
+    FR24 query actually uses. Returns None when bounds are not computed yet --
+    nothing meaningful to draw."""
+    bounds = bounds_of(cluster)
+    if bounds is None:
+        return None
+    span = max(bounds["north"] - bounds["south"], bounds["east"] - bounds["west"])
+    tolerance = max(span / 300, 1e-6)
+    features: list[dict[str, Any]] = []
+    for area_id in area_ids:
+        row = geometries_by_id.get(area_id)
+        if not row or not row.get("geometry_json"):
+            continue  # missing area already surfaced via missing_area_ids
+        geom = make_valid(shape(json.loads(row["geometry_json"])))
+        features.append({
+            "type": "Feature",
+            "properties": {"role": "area", "name": row.get("name") or area_id},
+            "geometry": mapping(geom.simplify(tolerance, preserve_topology=True)),
+        })
+    features.append({
+        "type": "Feature",
+        "properties": {"role": "bounds"},
+        "geometry": mapping(box(bounds["west"], bounds["south"], bounds["east"], bounds["north"])),
+    })
+    return {"type": "FeatureCollection", "features": features}
 
 
 def validate_manual_bounds(north: float, south: float, west: float, east: float) -> None:

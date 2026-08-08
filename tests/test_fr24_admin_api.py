@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from fastapi.testclient import TestClient
 from shapely.geometry import Polygon, mapping
@@ -110,6 +110,28 @@ def test_fr24_clusters_create_with_manual_bounds_no_areas_succeeds():
     assert listing["clusters"][0]["name"] == "Test Cluster"
 
 
+def test_fr24_clusters_listing_includes_coverage_geojson():
+    replace_areas([_selected_area_record()], auto_select_all=True)
+    client = _authed_client()
+    created = client.post("/api/fr24/clusters", json=_cluster_payload(area_ids=["funai:test"]))
+    assert created.status_code == 200
+    listing = client.get("/api/fr24/clusters").json()
+    cluster = listing["clusters"][0]
+    fc = cluster["coverage_geojson"]
+    assert fc["type"] == "FeatureCollection"
+    roles = [f["properties"]["role"] for f in fc["features"]]
+    assert "area" in roles
+    assert "bounds" in roles
+
+
+def test_fr24_clusters_coverage_geojson_null_without_bounds():
+    client = _authed_client()
+    payload = _cluster_payload(enabled=False, use_manual_bounds=False)
+    assert client.post("/api/fr24/clusters", json=payload).status_code == 200
+    listing = client.get("/api/fr24/clusters").json()
+    assert listing["clusters"][0]["coverage_geojson"] is None
+
+
 def test_fr24_clusters_disabled_without_areas_or_bounds_succeeds():
     # A disabled cluster with neither areas nor manual bounds is fine -- it
     # just isn't polled. Only an ENABLED cluster with neither is rejected.
@@ -187,6 +209,49 @@ def test_fr24_status_fresh_db():
     body = response.json()
     assert body["budget_state"] == "normal"
     assert body["all_empty_baseline"] == 0
+
+
+def test_fr24_status_reports_readiness_blockers():
+    client = _authed_client()
+    body = client.get("/api/fr24/status").json()
+    assert body["enabled"] is False
+    assert body["enabled_source"] == "default"
+    assert body["api_key_configured"] is False
+    assert body["api_key_source"] == "default"
+    assert body["blockers"] == ["flag_disabled", "missing_api_key", "no_enabled_clusters"]
+
+
+def test_fr24_status_blockers_clear_as_requirements_met():
+    replace_areas([_selected_area_record()], auto_select_all=True)
+    client = _authed_client()
+    set_setting("flightradar24_api_key", "fr24-test-token")
+    set_setting("fr24_enabled", True)
+    body = client.get("/api/fr24/status").json()
+    assert body["enabled"] is True
+    assert body["enabled_source"] == "interface"
+    assert body["api_key_configured"] is True
+    assert body["blockers"] == ["no_enabled_clusters"]
+
+    created = client.post(
+        "/api/fr24/clusters", json=_cluster_payload(area_ids=["funai:test"])
+    )
+    assert created.status_code == 200
+    body = client.get("/api/fr24/status").json()
+    assert body["blockers"] == []
+
+
+def test_fr24_status_reports_budget_pause_blocker():
+    replace_areas([_selected_area_record()], auto_select_all=True)
+    client = _authed_client()
+    set_setting("flightradar24_api_key", "fr24-test-token")
+    set_setting("fr24_enabled", True)
+    client.post("/api/fr24/clusters", json=_cluster_payload(area_ids=["funai:test"]))
+    set_setting("fr24_budget_policy", "pause_fr24")
+    set_setting("fr24_monthly_operating_budget", 100)
+    bcid = billing_cycle_id(datetime.now(UTC))
+    record_fr24_request(bcid, "live/flight-positions/light", "prior", "ok", 100, 200, 100, 0, False)
+    body = client.get("/api/fr24/status").json()
+    assert body["blockers"] == ["budget_exhausted_paused"]
 
 
 def test_fr24_test_no_clusters_configured():

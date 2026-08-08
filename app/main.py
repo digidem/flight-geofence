@@ -62,6 +62,7 @@ from .fr24_clusters import (
     active_cluster_overlaps,
     bounds_of,
     compute_cluster_bounds,
+    coverage_geojson,
     geometry_version_hash,
     validate_manual_bounds,
 )
@@ -77,6 +78,7 @@ from .settings_store import (
     get_setting,
     public_settings,
     set_setting,
+    setting_source,
 )
 
 logging.basicConfig(
@@ -678,6 +680,15 @@ async def fr24_clusters_get(request: Request):
         item["missing_area_ids"] = fr24_cluster_missing_area_ids(cluster["id"])
         item["categories"] = json.loads(cluster["categories_json"])
         result.append(item)
+    # One batched geometry fetch for every member area across all clusters,
+    # keyed by id, so the coverage minimap adds exactly one query per panel
+    # load regardless of how many clusters exist.
+    geometries = {
+        row["id"]: row
+        for row in areas_by_ids([aid for item in result for aid in item["area_ids"]])
+    }
+    for item in result:
+        item["coverage_geojson"] = coverage_geojson(item, geometries, item["area_ids"])
     return {
         "clusters": result,
         "overlap_warnings": active_cluster_overlaps(clusters),
@@ -817,15 +828,39 @@ async def fr24_status(request: Request):
     elapsed_fraction = (now.day - 1 + now.hour / 24) / days_in_month if days_in_month else 0
     projected = fr24_credits.projected_end_of_cycle_credits(used, elapsed_fraction)
 
+    enabled = bool(get_setting("fr24_enabled"))
+    api_key_configured = bool(get_setting("flightradar24_api_key"))
+    budget_state = fr24_credits.budget_state(used, operating_budget)
+    # Every independent reason the background poller might not be spending
+    # credits right now, so the dashboard can explain "Enabled: No" instead
+    # of just asserting it. Mirrors the scheduler's own gates
+    # (app/fr24_scheduler.py) one-for-one.
+    blockers: list[str] = []
+    if not enabled:
+        blockers.append("flag_disabled")
+    if not api_key_configured:
+        blockers.append("missing_api_key")
+    if not enabled_clusters:
+        blockers.append("no_enabled_clusters")
+    if (
+        get_setting("fr24_budget_policy") == "pause_fr24"
+        and budget_state == "exhausted"
+    ):
+        blockers.append("budget_exhausted_paused")
+
     return {
-        "enabled": bool(get_setting("fr24_enabled")),
+        "enabled": enabled,
+        "enabled_source": setting_source("fr24_enabled"),
+        "api_key_configured": api_key_configured,
+        "api_key_source": setting_source("flightradar24_api_key"),
+        "blockers": blockers,
         "active_clusters": len(enabled_clusters),
         "max_active_clusters": cfg.fr24_max_active_clusters,
         "plan_monthly_credits": int(get_setting("fr24_plan_monthly_credits")),
         "operating_budget": operating_budget,
         "promotional_credits": int(get_setting("fr24_promotional_credits")) or None,
         "credits_used_this_cycle": used,
-        "budget_state": fr24_credits.budget_state(used, operating_budget),
+        "budget_state": budget_state,
         "all_empty_baseline": baseline,
         "projected_end_of_cycle_credits": projected,
         "billing_cycle_id": bcid,
