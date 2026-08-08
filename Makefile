@@ -31,6 +31,8 @@ logs:
 	docker compose logs -f flight-monitor
 
 dev:
+	DATABASE_PATH=$${DATABASE_PATH:-data/runtime/flight_alerts.db} \
+	DOWNLOAD_DIR=$${DOWNLOAD_DIR:-data/downloads} \
 	uv run uvicorn app.main:app --host 127.0.0.1 --port 8081 --reload
 
 test:

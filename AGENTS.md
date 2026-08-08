@@ -9,11 +9,15 @@ Maintain a private research PoC that compares aircraft positions with selected B
 ## Commands
 
 ```bash
-uv sync
+uv sync --extra dev  # include pytest for make check
+make dev          # local dev server with uv (hot-reload on :8081)
 make check
 node --check app/static/app.js
 cp .env.example .env && docker compose config --quiet
 ```
+
+`make dev` overrides `DATABASE_PATH` and `DOWNLOAD_DIR` to local `./data/`
+paths (the `.env` defaults assume Docker volume mounts at `/data`).
 
 Run a focused test with:
 

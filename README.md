@@ -216,6 +216,29 @@ docker compose logs -f flight-monitor
 
 The first official boundary sync may take several minutes and use substantial memory while processing national datasets.
 
+## Local development with `uv`
+
+For development without Docker, run the app directly with `uv`:
+
+```bash
+make dev
+```
+
+This starts a hot-reloading server on `http://127.0.0.1:8081`. The `dev` target
+overrides `DATABASE_PATH` and `DOWNLOAD_DIR` to local `./data/` paths, because
+the `.env` defaults (`/data/runtime/...`, `/data/downloads`) assume Docker
+volume mounts that do not exist on the host. To use custom paths, export them
+before running:
+
+```bash
+DATABASE_PATH=/path/to/flight_alerts.db DOWNLOAD_DIR=/path/to/downloads make dev
+```
+
+> [!NOTE]
+> The `--reload` watcher monitors the project directory. Because the boundary
+> sync writes temporary files to `./data/downloads/`, you may see frequent
+> "changes detected" log lines — these are harmless.
+
 ## First-run workflow
 
 1. Log in with `ADMIN_PASSWORD`.
@@ -565,7 +588,7 @@ The app container runs with:
 ### Common commands
 
 ```bash
-make dev                 # run locally with uv (hot-reload on :8081)
+make dev                 # run locally with uv (hot-reload on :8081, local ./data paths)
 make up                 # start private/local deployment
 make public             # start with Caddy HTTPS profile
 make logs               # follow application logs
@@ -656,10 +679,10 @@ For security findings, avoid opening a public issue containing credentials, exac
 
 ## Testing
 
-Install dependencies with `uv`:
+Install dependencies with `uv` (include the `dev` extra for `pytest`):
 
 ```bash
-uv sync
+uv sync --extra dev
 ```
 
 Run the full local check:
