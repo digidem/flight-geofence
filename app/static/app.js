@@ -131,12 +131,59 @@ function metric(label, value, note) {
   return `<article class="metric"><div class="metric-label">${escapeHtml(label)}</div><div class="metric-value">${escapeHtml(value)}</div><div class="metric-note">${escapeHtml(note)}</div></article>`;
 }
 
-function fr24ClusterBoundsText(cluster) {
-  const bounds = cluster.use_manual_bounds
+function fr24ClusterNumericBounds(cluster) {
+  const values = cluster.use_manual_bounds
     ? [cluster.manual_north, cluster.manual_south, cluster.manual_west, cluster.manual_east]
     : [cluster.calc_north, cluster.calc_south, cluster.calc_west, cluster.calc_east];
-  if (bounds.some((value) => value === null || value === undefined)) return t("fr24_bounds_pending");
-  return `N ${bounds[0]} · S ${bounds[1]} · W ${bounds[2]} · E ${bounds[3]}`;
+  if (values.some((value) => value === null || value === undefined)) return null;
+  return { north: values[0], south: values[1], west: values[2], east: values[3] };
+}
+
+function fr24ClusterBoundsText(cluster) {
+  const bounds = fr24ClusterNumericBounds(cluster);
+  if (!bounds) return t("fr24_bounds_pending");
+  return `N ${bounds.north} · S ${bounds.south} · W ${bounds.west} · E ${bounds.east}`;
+}
+
+function fr24CoverageMinimap(cluster) {
+  // Equirectangular sketch of the cluster coverage: member-area polygons
+  // filled, the FR24 query rectangle dashed on top. Purely visual sanity
+  // check for operators -- "is this really the territory I think it is?"
+  const fc = cluster.coverage_geojson;
+  const bounds = fr24ClusterNumericBounds(cluster);
+  if (!fc || !Array.isArray(fc.features) || !bounds) return "";
+  const latSpan = bounds.north - bounds.south;
+  const lonSpan = bounds.east - bounds.west;
+  if (latSpan <= 0 || lonSpan <= 0) return "";
+  const width = 260;
+  const kx = Math.cos(((bounds.north + bounds.south) / 2) * (Math.PI / 180)) || 1;
+  const height = Math.max(70, Math.min(200, Math.round(width * (latSpan / (lonSpan * kx)))));
+  const pad = 6;
+  const px = (lon) => pad + ((lon - bounds.west) / lonSpan) * (width - 2 * pad);
+  const py = (lat) => pad + ((bounds.north - lat) / latSpan) * (height - 2 * pad);
+  const ringPath = (ring) =>
+    ring.map(([lon, lat], i) => `${i ? "L" : "M"}${px(lon).toFixed(2)} ${py(lat).toFixed(2)}`).join("") + "Z";
+  const geomPaths = (geom) => {
+    if (!geom) return "";
+    if (geom.type === "Polygon") return geom.coordinates.map(ringPath).join("");
+    if (geom.type === "MultiPolygon") {
+      return geom.coordinates.map((poly) => poly.map(ringPath).join("")).join("");
+    }
+    return "";
+  };
+  const areas = fc.features
+    .filter((f) => f.properties && f.properties.role === "area")
+    .map(
+      (f) =>
+        `<path class="minimap-area" fill-rule="evenodd" d="${geomPaths(f.geometry)}"><title>${escapeHtml(f.properties.name || "")}</title></path>`,
+    )
+    .join("");
+  const bx0 = px(bounds.west).toFixed(2);
+  const by0 = py(bounds.north).toFixed(2);
+  const bw = (px(bounds.east) - px(bounds.west)).toFixed(2);
+  const bh = (py(bounds.south) - py(bounds.north)).toFixed(2);
+  const rect = `<rect class="minimap-bounds" x="${bx0}" y="${by0}" width="${bw}" height="${bh}"/>`;
+  return `<svg class="fr24-minimap" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("fr24_minimap_aria"))}">${areas}${rect}</svg>`;
 }
 
 function fr24ClusterCard(cluster) {
@@ -148,6 +195,7 @@ function fr24ClusterCard(cluster) {
     <div>
       <strong>${escapeHtml(cluster.name)}</strong>${cluster.enabled ? "" : ` · <span class="muted">${t("fr24_disabled")}</span>`}
       <p class="muted">${fr24ClusterBoundsText(cluster)}</p>
+      ${fr24CoverageMinimap(cluster)}
       <p class="muted">${t("fr24_cluster_areas")}: ${cluster.area_ids.length} · ${t("fr24_last_poll")}: ${cluster.last_poll_at ? formatTime(cluster.last_poll_at) : "—"} · ${t("fr24_last_credits")}: ${cluster.last_estimated_credits ?? "—"}</p>
       ${errorLine}${missing}
     </div>
@@ -203,6 +251,27 @@ function fr24ResetForm() {
   $("#fr24-area-picker").innerHTML = fr24AreaPickerRows([]);
 }
 
+function fr24SourceNote(source) {
+  if (source === "environment") return t("fr24_source_environment");
+  if (source === "interface") return t("fr24_source_interface");
+  return t("fr24_source_default");
+}
+
+function fr24LastRunText(latestPoll) {
+  if (!latestPoll) return t("fr24_no_run_yet");
+  const when = formatTime(latestPoll.completed_at || latestPoll.started_at);
+  // skipped = the scheduler woke up and deliberately did nothing (kill
+  // switch off, no clusters, budget pause). Rendering that as "failed"
+  // scared operators for no reason, so it gets its own neutral wording.
+  if (latestPoll.skipped) {
+    return `${when} · ${t("fr24_run_skipped")}: ${latestPoll.error_message}`;
+  }
+  const outcome = latestPoll.error_message
+    ? `${t("fr24_run_failed")}: ${latestPoll.error_message}`
+    : t("fr24_run_success");
+  return `${when} · ${outcome}`;
+}
+
 async function loadFr24() {
   // Dedicated, unfiltered, selected-only fetch for the area picker -- must
   // never depend on the "Protected areas" tab's own search/category filter
@@ -213,8 +282,49 @@ async function loadFr24() {
     api("/api/fr24/status"),
     api("/api/fr24/clusters"),
   ]);
+
+  // Kill-switch toggle: reflects FR24_ENABLED. When the value is pinned by
+  // the environment the switch is disabled and the note says so, matching
+  // how locked settings render on the Settings tab.
+  const locked = status.enabled_source === "environment";
+  const enableToggle = $("#fr24-enable-toggle");
+  if (enableToggle) {
+    enableToggle.checked = status.enabled;
+    enableToggle.disabled = locked;
+    enableToggle.title = locked ? t("fr24_locked_env") : "";
+  }
+  const powerBox = $("#fr24-power");
+  if (powerBox) powerBox.classList.toggle("on", status.enabled);
+  const powerState = $("#fr24-power-state");
+  if (powerState) {
+    powerState.textContent = status.enabled ? t("fr24_power_on") : t("fr24_power_off");
+  }
+  const powerNote = $("#fr24-power-note");
+  if (powerNote) {
+    const parts = [t("fr24_power_note"), fr24SourceNote(status.enabled_source)];
+    if (locked) parts.push(t("fr24_locked_env"));
+    powerNote.textContent = parts.join(" · ");
+  }
+
+  const blockerKeys = {
+    flag_disabled: "fr24_blocker_flag_disabled",
+    missing_api_key: "fr24_blocker_missing_api_key",
+    no_enabled_clusters: "fr24_blocker_no_enabled_clusters",
+    budget_exhausted_paused: "fr24_blocker_budget_exhausted_paused",
+  };
+  const blockers = (status.blockers || []).map((code) => t(blockerKeys[code] || code));
+  $("#fr24-blockers").innerHTML = blockers.length
+    ? `<div class="warning"><strong>${escapeHtml(t("fr24_blockers_title"))}:</strong> ${blockers.map(escapeHtml).join(" · ")}</div>`
+    : "";
+
+  // FR24_ENABLED itself is shown by the switch above, not duplicated here.
   $("#fr24-status").innerHTML = [
-    metric(t("fr24_enabled_label"), status.enabled ? t("fr24_yes") : t("fr24_no"), ""),
+    metric(
+      t("fr24_api_key_label"),
+      status.api_key_configured ? t("fr24_api_key_set") : t("fr24_api_key_missing"),
+      fr24SourceNote(status.api_key_source),
+    ),
+    metric(t("fr24_last_run"), fr24LastRunText(status.latest_poll), ""),
     metric(t("fr24_active_clusters"), `${status.active_clusters}/${status.max_active_clusters}`, ""),
     metric(t("fr24_budget_state"), status.budget_state, ""),
     metric(t("fr24_credits_used"), `${status.credits_used_this_cycle} / ${status.operating_budget}`, status.billing_cycle_id),
@@ -787,6 +897,22 @@ $("#settings-display")?.addEventListener("submit", (event) => {
 
 $("#fr24-manual-bounds")?.addEventListener("change", (event) => {
   $("#fr24-manual-bounds-fields").hidden = !event.currentTarget.checked;
+});
+
+$("#fr24-enable-toggle")?.addEventListener("change", async (event) => {
+  // FR24_ENABLED kill switch. Saved through the generic settings endpoint,
+  // which rejects the write when the value is pinned by the environment --
+  // the checkbox is already disabled in that case, so this catch is just a
+  // safety net that reports the reason instead of failing silently.
+  try {
+    await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ values: { fr24_enabled: event.currentTarget.checked } }),
+    });
+  } catch (error) {
+    window.alert(error.message);
+  }
+  await loadFr24();
 });
 
 $("#fr24-cluster-reset")?.addEventListener("click", fr24ResetForm);

@@ -119,6 +119,18 @@
       <section id="view-fr24" class="view">
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_subtitle">Flightradar24 Explorer</p><h2 data-i18n="fr24_title">Clusters e orçamento de créditos</h2></div></div>
+          <div class="fr24-power" id="fr24-power">
+            <label class="switch">
+              <span class="sr-only" data-i18n="fr24_enable_toggle">Polling FR24 habilitado</span>
+              <input type="checkbox" id="fr24-enable-toggle">
+              <span class="switch-track" aria-hidden="true"></span>
+            </label>
+            <div>
+              <p class="fr24-power-state" id="fr24-power-state" data-i18n="fr24_power_off">Polling desligado</p>
+              <p class="muted" id="fr24-power-note" data-i18n="fr24_power_note">Consulta os clusters ativos periodicamente e consome créditos</p>
+            </div>
+          </div>
+          <div id="fr24-blockers"></div>
           <div id="fr24-status" class="metric-grid"></div>
           <div id="fr24-overlap-warning" class="error"></div>
         </article>
