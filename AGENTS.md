@@ -75,6 +75,7 @@ Before finishing:
 
 1. Run the smallest relevant test while iterating, then `make check`.
 2. Run the JavaScript syntax check after frontend changes.
-3. Validate Compose and build the image after infra or dependency changes.
-4. Update `README.md`, `.env.example`, `docs/SPEC.md`, or `docs/RESEARCH.md` when their documented behavior changes.
-5. Report any check that could not run; do not claim live upstream or email validation without evidence.
+3. `uv run ruff check app tests` has a large pre-existing baseline (unrelated legacy findings). To prove a change adds zero new ones: `git stash -u` (or `git stash push -u -- <files>` if unrelated changes are also in the tree), run ruff, note the count, `git stash pop`, run ruff again, compare counts.
+4. Validate Compose and build the image after infra or dependency changes.
+5. Update `README.md`, `.env.example`, `docs/SPEC.md`, or `docs/RESEARCH.md` when their documented behavior changes.
+6. Report any check that could not run; do not claim live upstream or email validation without evidence.
