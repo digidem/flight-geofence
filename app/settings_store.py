@@ -68,7 +68,7 @@ SETTING_DEFS: dict[str, SettingDef] = {
     ),
     "fr24_budget_policy": SettingDef(
         "FR24_BUDGET_POLICY",
-        "warn_only",
+        "pause_fr24",
         choices=("warn_only", "pause_fr24", "continue_until_provider_rejects"),
     ),
     "fr24_poll_interval_seconds": SettingDef(

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from app.config import env_settings
 from app.fr24_credits import (
     all_empty_baseline,
     billing_cycle_id,
@@ -10,6 +11,7 @@ from app.fr24_credits import (
     monthly_credit_projection,
     projected_end_of_cycle_credits,
 )
+from app.settings_store import get_setting
 
 
 def test_estimate_light_credits_empty():
@@ -98,3 +100,12 @@ def test_billing_cycle_id_normalizes_aware_datetime_to_utc():
     # not silently stay in July because of a naive local-time comparison.
     late_local = datetime(2026, 7, 31, 23, 0, tzinfo=timezone(timedelta(hours=-3)))
     assert billing_cycle_id(late_local) == "2026-08"
+
+
+def test_default_budget_policy_is_pause_fr24(monkeypatch):
+    # Fresh install (empty DB, FR24_BUDGET_POLICY unset): the operator-bound
+    # default must be pause_fr24 -- exhaustion stops polling instead of only
+    # logging. Baseline failure before the flip is warn_only.
+    monkeypatch.delenv("FR24_BUDGET_POLICY", raising=False)
+    env_settings.cache_clear()
+    assert get_setting("fr24_budget_policy") == "pause_fr24"

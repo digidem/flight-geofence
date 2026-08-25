@@ -404,12 +404,14 @@ Key properties of this integration:
   on-demand, manually-triggered Tracks lookup is tracked as a follow-up.
 - **Budget guardrails.** A configurable monthly credit budget (`FR24_MONTHLY_OPERATING_BUDGET`) is
   tracked against actual usage. At 70%+ of budget the scheduler suppresses non-essential calls
-  (enrichment, daily usage-sync); at 85%+ and 95%+ it logs escalating warnings only, by default —
-  it does **not** stop routine Light polling on its own. `FR24_BUDGET_POLICY` controls what happens
-  once budget is fully exhausted (100%+): `warn_only` (default) keeps polling and only logs;
-  `pause_fr24` stops the FR24 cycle entirely until the next billing period;
+  (enrichment, daily usage-sync); at 85%+ and 95%+ it logs escalating warnings. `FR24_BUDGET_POLICY`
+  controls what happens once budget is fully exhausted (100%+) — `pause_fr24` (the default) stops
+  the FR24 cycle entirely until the next billing period, an actual hard ceiling out of the box.
+  Two alternatives remain selectable through the interface (a stored value always survives, and
+  an environment setting locks the control): `warn_only` keeps polling at 100% and only logs;
   `continue_until_provider_rejects` keeps polling regardless and relies on Flightradar24's own API
-  to start rejecting requests. Set `FR24_BUDGET_POLICY=pause_fr24` for an actual hard ceiling.
+  to start rejecting requests. Spend is evaluated at the start of each cycle, so a budget reached
+  mid-cycle lets that cycle finish and pauses starting with the next one.
 - **Data retention.** By default, FR24-derived events and aircraft state are retained
   indefinitely — auto-deletion is off (`FR24_AUTO_DELETE_ENABLED=false`). FLIGHTRADAR_API.md sec.
   17 requires deleting Flightradar24 data within 30 days unless a written agreement exists; this
@@ -425,7 +427,7 @@ FR24_ENABLED=true
 FLIGHTRADAR24_API_KEY=...
 FR24_POLL_INTERVAL_SECONDS=300
 FR24_MONTHLY_OPERATING_BUDGET=28000
-FR24_BUDGET_POLICY=warn_only
+FR24_BUDGET_POLICY=pause_fr24
 FR24_AUTO_DELETE_ENABLED=false
 ```
 

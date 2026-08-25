@@ -416,25 +416,130 @@ def test_no_enabled_clusters(mock_fr24_transport):
     assert result["skipped"] == 1
 
 
-# --- Budget exhausted with pause_fr24 policy skips the cycle ---
+# --- Budget gating: default pause_fr24 skip, stored warn_only survival, env lock ---
 
 
-def test_budget_exhausted_skips_cycle(mock_fr24_transport):
+@pytest.mark.parametrize("phase", ["shadow", "review", "live"])
+def test_exhausted_budget_default_policy_skips_cycle_without_requests(mock_fr24_transport, phase, caplog):
+    # Default policy flip: with no policy configured anywhere, an exhausted
+    # budget stops the cycle BEFORE any HTTP request, in every phase -- the
+    # gate precedes phase lookup, and shadow/review never email regardless.
     _enable_fr24()
-    set_setting("fr24_budget_policy", "pause_fr24")
+    set_setting("operating_phase", phase)
     set_setting("fr24_monthly_operating_budget", 100)
     save_fr24_cluster(_enabled_cluster("c1"))
 
     bcid = billing_cycle_id(datetime.now(UTC))
     record_fr24_request(bcid, "live/flight-positions/light", "prior", "ok", 100, 200, 100, 0, False)
 
+    http_calls = []
+
     def handler(request):
+        http_calls.append(str(request.url))
         raise AssertionError("HTTP should not be called when budget is exhausted")
 
     mock_fr24_transport(handler)
     result = asyncio.run(run_fr24_cycle())
-    assert "budget exhausted" in result["error_message"]
+    assert http_calls == []
     assert result["skipped"] == 1
+    assert result["success"] == 0
+    assert result["completed_at"] is not None
+    assert "budget exhausted" in result["error_message"]
+    assert "budget exhausted" in caplog.text
+
+
+def test_stored_warn_only_survives_default_flip(mock_fr24_transport):
+    # A deployment with a STORED interface value keeps it across the default
+    # flip -- no backfill/migration may overwrite legacy rows (a DB value
+    # outranks the definition default), and warn_only still polls through
+    # 100% exhaustion instead of pausing.
+    from app.settings_store import get_setting
+
+    _enable_fr24()
+    set_setting("fr24_usage_sync_enabled", False)
+    set_setting("fr24_monthly_operating_budget", 100)
+    save_fr24_cluster(_enabled_cluster("c1"))
+
+    # Nothing stored yet: the fresh-install default is the flipped one.
+    assert get_setting("fr24_budget_policy") == "pause_fr24"
+
+    set_setting("fr24_budget_policy", "warn_only")
+    bcid = billing_cycle_id(datetime.now(UTC))
+    record_fr24_request(bcid, "live/flight-positions/light", "prior", "ok", 100, 200, 100, 0, False)
+
+    http_calls = []
+
+    def handler(request):
+        http_calls.append(str(request.url))
+        return _json_response({"data": []})
+
+    mock_fr24_transport(handler)
+    result = asyncio.run(run_fr24_cycle())
+    assert get_setting("fr24_budget_policy") == "warn_only"
+    assert len(http_calls) == 1
+    assert result["skipped"] != 1
+    assert result["success"] == 1
+
+
+def test_env_locks_budget_policy_control(monkeypatch):
+    from app.config import env_settings
+    from app.database import set_db_setting
+    from app.settings_store import _fernet, get_setting, public_settings
+
+    monkeypatch.delenv("FR24_BUDGET_POLICY", raising=False)
+    env_settings.cache_clear()
+
+    fresh = public_settings()["fr24_budget_policy"]
+    assert fresh["value"] == "pause_fr24"
+    assert fresh["source"] == "default"
+    assert fresh["locked"] is False
+
+    # An environment value wins AND locks the control, even against a
+    # conflicting well-formed row written directly to the DB out-of-band.
+    monkeypatch.setenv("FR24_BUDGET_POLICY", "warn_only")
+    env_settings.cache_clear()
+    token = _fernet().encrypt(json.dumps("pause_fr24").encode("utf-8")).decode("ascii")
+    set_db_setting("fr24_budget_policy", token)
+
+    locked = public_settings()["fr24_budget_policy"]
+    assert locked["value"] == "warn_only"
+    assert locked["source"] == "environment"
+    assert locked["locked"] is True
+    assert locked["choices"] == ["warn_only", "pause_fr24", "continue_until_provider_rejects"]
+    assert get_setting("fr24_budget_policy") == "warn_only"
+
+    with pytest.raises(ValueError):
+        set_setting("fr24_budget_policy", "pause_fr24")
+
+
+def test_budget_exhausted_mid_cycle_finishes_then_next_cycle_skips(mock_fr24_transport):
+    # Spend is evaluated once at cycle start: crossing 100% mid-cycle lets
+    # the current cycle finish; only the NEXT cycle pauses.
+    _enable_fr24()
+    set_setting("fr24_usage_sync_enabled", False)
+    set_setting("fr24_monthly_operating_budget", 100)
+    save_fr24_cluster(_enabled_cluster("c1"))
+
+    bcid = billing_cycle_id(datetime.now(UTC))
+    # 99/100 staged -- hard_limit at start, not yet exhausted.
+    record_fr24_request(bcid, "live/flight-positions/light", "prior", "ok", 100, 99, 100, 0, False)
+
+    http_calls = []
+
+    def handler(request):
+        http_calls.append(str(request.url))
+        return _json_response({"data": []})
+
+    mock_fr24_transport(handler)
+    first = asyncio.run(run_fr24_cycle())
+    assert first["skipped"] != 1
+    assert first["success"] == 1
+    assert len(http_calls) == 1
+
+    second = asyncio.run(run_fr24_cycle())
+    assert second["skipped"] == 1
+    assert "budget exhausted" in second["error_message"]
+    assert len(http_calls) == 1
 
 
 # --- Positive control: a normal, non-truncated, non-failed cycle DOES advance disappearance ---

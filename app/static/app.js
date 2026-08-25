@@ -278,9 +278,10 @@ async function loadFr24() {
   // or on whether that tab has even been visited this session.
   const selectedAreasResult = await api("/api/areas?selected=true&limit=500");
   appState.fr24SelectedAreas = selectedAreasResult.items;
-  const [status, clustersResult] = await Promise.all([
+  const [status, clustersResult, settingsResult] = await Promise.all([
     api("/api/fr24/status"),
     api("/api/fr24/clusters"),
+    api("/api/settings"),
   ]);
 
   // Kill-switch toggle: reflects FR24_ENABLED. When the value is pinned by
@@ -317,6 +318,34 @@ async function loadFr24() {
     ? `<div class="warning"><strong>${escapeHtml(t("fr24_blockers_title"))}:</strong> ${blockers.map(escapeHtml).join(" · ")}</div>`
     : "";
 
+  // Budget policy control -- fed by its own GET /api/settings so value,
+  // source, and locked stay server-authoritative. Options come from the
+  // reported choices; setField() applies value + env lock to the select.
+  const policyChoiceKeys = {
+    warn_only: "fr24_policy_choice_warn_only",
+    pause_fr24: "fr24_policy_choice_pause_fr24",
+    continue_until_provider_rejects: "fr24_policy_choice_continue",
+  };
+  const policyForm = $("#fr24-budget-policy-form");
+  if (policyForm) {
+    const policy = settingsResult.settings.fr24_budget_policy;
+    const policySelect = policyForm.elements.namedItem("fr24_budget_policy");
+    policySelect.innerHTML = policy.choices
+      .map((choice) => `<option value="${choice}">${escapeHtml(t(policyChoiceKeys[choice] || choice))}</option>`)
+      .join("");
+    setField(policyForm, "fr24_budget_policy", policy);
+    $("#fr24-policy-current").textContent = t(policyChoiceKeys[policy.value] || policy.value);
+    $("#fr24-policy-effect").textContent =
+      policy.value === "pause_fr24"
+        ? t("fr24_policy_effect_stop")
+        : t("fr24_policy_effect_keep_polling");
+    $("#fr24-policy-source").textContent = fr24SourceNote(policy.source);
+    const policyBadge = $("#fr24-policy-env-badge");
+    if (policyBadge) {
+      policyBadge.textContent = t("fr24_policy_env_locked");
+      policyBadge.hidden = !policy.locked;
+    }
+  }
   // FR24_ENABLED itself is shown by the switch above, not duplicated here.
   $("#fr24-status").innerHTML = [
     metric(
@@ -747,7 +776,7 @@ async function loadSettings() {
     appState.timezone = settings.timezone.value;
   }
 
-  ["settings-core", "settings-email", "settings-thresholds", "settings-display"].forEach((id) => {
+  ["settings-core", "settings-email", "settings-thresholds", "settings-display", "fr24-budget-policy-form"].forEach((id) => {
     const form = $(`#${id}`);
     if (form) {
       Object.entries(settings).forEach(([key, setting]) => setField(form, key, setting));
@@ -912,6 +941,13 @@ $("#fr24-enable-toggle")?.addEventListener("change", async (event) => {
   } catch (error) {
     window.alert(error.message);
   }
+  await loadFr24();
+});
+$("#fr24-budget-policy-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  // Generic settings POST machinery; then reload the FR24 tab so the
+  // current/effect/source lines re-render from the server's answer.
+  await saveForm(event.currentTarget);
   await loadFr24();
 });
 

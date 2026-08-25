@@ -63,6 +63,25 @@ class TestTranslationKeyParity:
         same -= legitimately_same
         assert not same, f"Keys with identical EN/PT values (possibly untranslated): {same}"
 
+    def test_fr24_budget_policy_keys_ship_in_both_languages(self):
+        """The ten FR24 budget-policy panel keys must exist in EN and PT."""
+        tr = _load_translations()
+        expected = {
+            "fr24_policy_title",
+            "fr24_policy_label",
+            "fr24_policy_current",
+            "fr24_policy_choice_warn_only",
+            "fr24_policy_choice_pause_fr24",
+            "fr24_policy_choice_continue",
+            "fr24_policy_effect_stop",
+            "fr24_policy_effect_keep_polling",
+            "fr24_policy_env_locked",
+            "fr24_save_policy",
+        }
+        for lang in ("en", "pt"):
+            missing = expected - set(tr[lang].keys())
+            assert not missing, f"Missing FR24 budget-policy keys in {lang}: {missing}"
+
 
 class TestHtmlI18nCoverage:
     """All visible HTML text should use data-i18n."""

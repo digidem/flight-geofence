@@ -130,6 +130,16 @@
               <p class="muted" id="fr24-power-note" data-i18n="fr24_power_note">Consulta os clusters ativos periodicamente e consome créditos</p>
             </div>
           </div>
+          <form id="fr24-budget-policy-form" class="form-grid">
+            <p class="eyebrow" data-i18n="fr24_policy_title">Política de orçamento FR24</p>
+            <label data-i18n="fr24_policy_label">Política ao esgotar o orçamento<select name="fr24_budget_policy"></select></label>
+            <p class="muted"><span data-i18n="fr24_policy_current">Política atual:</span> <strong id="fr24-policy-current"></strong></p>
+            <p class="warning" id="fr24-policy-effect"></p>
+            <p class="muted" id="fr24-policy-source"></p>
+            <p class="signal" id="fr24-policy-env-badge" hidden></p>
+            <button class="button primary" type="submit" data-i18n="fr24_save_policy">Salvar política</button>
+            <div class="form-result"></div>
+          </form>
           <div id="fr24-blockers"></div>
           <div id="fr24-status" class="metric-grid"></div>
           <div id="fr24-overlap-warning" class="error"></div>

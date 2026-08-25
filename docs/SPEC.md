@@ -117,9 +117,11 @@ When multiple free providers are enabled:
 - Track a configurable monthly credit budget against actual usage; suppress non-essential calls
   (enrichment, usage sync) once spend crosses the warning threshold (70%). Escalating budget
   states above that (critical, hard-limit) are logged but do not themselves stop routine Light
-  polling; only a policy of `pause_fr24` at full exhaustion (100%+) stops the FR24 cycle outright.
-  The default policy (`warn_only`) logs but never stops polling, so operators who need a hard
-  ceiling must set the policy explicitly.
+  polling; at full exhaustion (100%+) the configured `FR24_BUDGET_POLICY` decides — the default,
+  `pause_fr24`, stops the FR24 cycle outright until the next billing period, while `warn_only`
+  logs but never stops polling and `continue_until_provider_rejects` polls until the provider
+  starts rejecting requests. Spend is evaluated at cycle start, so exhaustion reached mid-cycle
+  finishes the current cycle and pauses the next one.
 - Never merge Flightradar24 observations into the free-provider grid's own merge step; instead,
   when a free provider already holds a fresh, actively-tracked claim on an aircraft, Flightradar24
   must defer to it rather than overriding it with a possibly-stale or one-off touch.
