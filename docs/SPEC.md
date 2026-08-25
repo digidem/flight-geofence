@@ -111,9 +111,15 @@ When multiple free providers are enabled:
 - Call the Count endpoint only exceptionally (a possibly-truncated Light response), throttled to
   at most once per hour per cluster, never as routine calibration.
 - Fetch Summary Full only for new candidate aircraft entering a monitored area, and only when
-  enabled. Tracks (full flight history) is the most expensive endpoint and is not fetched by any
-  automated path in this release; an on-demand, manually-triggered Tracks lookup is a documented
-  follow-up, not yet implemented.
+  enabled. Tracks (full flight history, ~40 credits per returned flight) are fetched exclusively
+  through an authenticated, explicitly confirmed manual action — never automatically. The action
+  is cost-previewed before invocation and refuses (409) when the event has no Flightradar24 ID,
+  when the track was already fetched for that event or flight, or when the budget policy has
+  paused FR24 at full exhaustion (refusal names `pause_fr24`); provider failures surface as 502
+  without partial storage. Fetched tracks persist with the raw validated payload, requesting
+  actor, and credited cost for as long as their event is retained; duplicates stay refused while
+  that record exists. The retired `FR24_FETCH_TRACK_ON_EVENT` flag rejects any nonblank value at
+  startup by design.
 - Track a configurable monthly credit budget against actual usage; suppress non-essential calls
   (enrichment, usage sync) once spend crosses the warning threshold (70%). Escalating budget
   states above that (critical, hard-limit) are logged but do not themselves stop routine Light

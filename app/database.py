@@ -282,6 +282,17 @@ def init_db() -> None:
                 PRIMARY KEY (aircraft_hex, episode_id)
             );
 
+            CREATE TABLE IF NOT EXISTS fr24_tracks (
+                id TEXT PRIMARY KEY,
+                event_id TEXT NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+                aircraft_hex TEXT NOT NULL,
+                fr24_id TEXT NOT NULL UNIQUE,
+                payload_json TEXT NOT NULL,
+                requested_by TEXT NOT NULL,
+                estimated_credits INTEGER NOT NULL CHECK(estimated_credits >= 0),
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_fr24_tracks_created_at ON fr24_tracks(created_at);
             -- Writers must store '[redacted]' for old_value/new_value whenever
             -- SETTING_DEFS[key].secret is true -- this table is plaintext and
             -- unlike app_settings is never Fernet-encrypted.
@@ -757,6 +768,65 @@ def save_fr24_enrichment(
                 now,
             ),
         )
+
+
+def save_fr24_track(
+    *,
+    event_id: str,
+    aircraft_hex: str,
+    fr24_id: str,
+    payload: dict[str, Any],
+    requested_by: str,
+    estimated_credits: int,
+) -> bool:
+    """Persist one fetched track (raw validated provider envelope). Returns
+    False when UNIQUE(event_id)/UNIQUE(fr24_id) or the events FK loses an
+    insert race -- the caller maps that to 409/404 instead of spending the
+    track cost a second time."""
+    with db() as conn:
+        try:
+            conn.execute(
+                """
+                INSERT INTO fr24_tracks(
+                    id, event_id, aircraft_hex, fr24_id, payload_json,
+                    requested_by, estimated_credits, created_at
+                ) VALUES(?,?,?,?,?,?,?,?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    event_id,
+                    aircraft_hex,
+                    fr24_id,
+                    json.dumps(payload),
+                    requested_by,
+                    estimated_credits,
+                    utc_now_iso(),
+                ),
+            )
+        except sqlite3.IntegrityError:
+            return False
+    return True
+
+
+def get_fr24_track_by_event(
+    event_id: str, *, equivalent_fr24_id: str | None = None
+) -> dict[str, Any] | None:
+    """Prefer this event's own row; otherwise match by FR24 ID so two events
+    resolving to the same flight can never trigger a second credit spend."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM fr24_tracks WHERE event_id=?", (event_id,)
+        ).fetchone()
+        if row is None and equivalent_fr24_id:
+            row = conn.execute(
+                "SELECT * FROM fr24_tracks WHERE fr24_id=? LIMIT 1",
+                (equivalent_fr24_id,),
+            ).fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["payload"] = json.loads(item.pop("payload_json"))
+    return item
 
 
 def record_config_audit(

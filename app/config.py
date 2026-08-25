@@ -140,6 +140,22 @@ class EnvSettings(BaseSettings):
             raise ValueError("QUERY_SPACING_FACTOR must be between 0.65 and 1.0")
         return value
 
+    @field_validator("fr24_fetch_track_on_event")
+    @classmethod
+    def reject_legacy_fetch_track_on_event(cls, value: str) -> str:
+        # The auto-fetch knob was removed: Tracks are manual-only now (the
+        # authenticated admin action on an event). Blank/unset is silently
+        # accepted, but any nonblank value -- including the historical
+        # "false" -- means the deployment still expects automated fetching,
+        # so startup fails loudly instead of silently ignoring it.
+        if value.strip():
+            raise ValueError(
+                "FR24_FETCH_TRACK_ON_EVENT was removed: track fetching is manual-only "
+                "(authenticated admin action on an event). Remove this variable from "
+                "your environment or .env file and restart; manual Tracks need no flag."
+            )
+        return value
+
     @property
     def target_state_list(self) -> list[str]:
         return [x.strip().upper() for x in self.target_states.split(",") if x.strip()]

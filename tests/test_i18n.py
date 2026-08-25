@@ -82,6 +82,26 @@ class TestTranslationKeyParity:
             missing = expected - set(tr[lang].keys())
             assert not missing, f"Missing FR24 budget-policy keys in {lang}: {missing}"
 
+    def test_fr24_track_keys_ship_in_both_languages(self):
+        """The eleven FR24 manual-track action keys must exist in EN and PT."""
+        tr = _load_translations()
+        expected = {
+            "fr24_track_button",
+            "fr24_track_cost",
+            "fr24_track_confirm",
+            "fr24_track_fetching",
+            "fr24_track_success",
+            "fr24_track_error",
+            "fr24_track_blocked_missing",
+            "fr24_track_blocked_fetched",
+            "fr24_track_blocked_paused",
+            "fr24_track_blocked_progress",
+            "fr24_track_loading",
+        }
+        for lang in ("en", "pt"):
+            missing = expected - set(tr[lang].keys())
+            assert not missing, f"Missing FR24 track keys in {lang}: {missing}"
+
 
 class TestHtmlI18nCoverage:
     """All visible HTML text should use data-i18n."""

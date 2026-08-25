@@ -523,6 +523,8 @@ async function loadEventDetail(eventId) {
     const result = await api(`/api/events?limit=500`);
     const event = result.events.find((e) => e.id === eventId);
     if (!event) {
+      const trackPanel = $("#event-track-panel");
+      if (trackPanel) trackPanel.hidden = true;
       container.innerHTML = `<p class="muted">Event not found.</p>`;
       return;
     }
@@ -561,9 +563,59 @@ async function loadEventDetail(eventId) {
       <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
       <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.join("")}</table>
       <p style="margin-top:16px"><a href="/">&larr; Back to dashboard</a></p>`;
+    await setupEventTrackPanel(event);
   } catch (error) {
     container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
   }
+}
+
+
+const TRACK_BLOCKED_KEYS = {
+  missing_fr24_id: "fr24_track_blocked_missing",
+  already_fetched: "fr24_track_blocked_fetched",
+  budget_exhausted_pause_fr24: "fr24_track_blocked_paused",
+  request_in_progress: "fr24_track_blocked_progress",
+};
+
+function trackPanelRefs() {
+  return {
+    panel: $("#event-track-panel"),
+    costLine: $("#event-track-cost"),
+    button: $("#event-track-fetch"),
+    result: $("#event-track-result"),
+  };
+}
+
+async function setupEventTrackPanel(event) {
+  // Pure state-setter: current event id and credit estimate travel via the
+  // persistent panel's data attributes. The ONE click handler lives at
+  // module init (delegated on the panel) -- a per-render addEventListener
+  // here would accumulate handlers and stale event closures across views.
+  const { panel, costLine, button, result } = trackPanelRefs();
+  if (!panel || !costLine || !button || !result) return;
+  panel.dataset.eventId = event.id;
+  delete panel.dataset.credits;
+  button.hidden = false;
+  button.disabled = true; // blocked/unknown states show a disabled action (B3)
+  costLine.textContent = "";
+  result.textContent = "";
+  let status;
+  try {
+    status = await api(`/api/fr24/events/${encodeURIComponent(event.id)}/track`);
+  } catch {
+    panel.hidden = true; // no authenticated view of this event's track state
+    return;
+  }
+  panel.hidden = false;
+  if (!status.available) {
+    const key = TRACK_BLOCKED_KEYS[status.blocked_reason];
+    costLine.textContent = key ? t(key) : t("fr24_track_loading");
+    return; // button stays visible but disabled while blocked/fetched/paused
+  }
+  const creditsLabel = String(status.estimated_credits);
+  panel.dataset.credits = creditsLabel;
+  costLine.textContent = t("fr24_track_cost").replace("{credits}", creditsLabel);
+  button.disabled = false;
 }
 
 function handleHashRoute() {
@@ -1004,6 +1056,43 @@ $("#fr24-test")?.addEventListener("click", async (event) => {
   } catch (error) {
     resultBox.textContent = error.message;
   } finally {
+    button.disabled = false;
+  }
+});
+
+// B2: the #event-track-panel persists in index.html, so its click handling is
+// registered EXACTLY ONCE here (delegated) instead of per event-detail render.
+// The handler reads the CURRENT event id / credit estimate from the panel's
+// dataset at click time -- stale closures across events are impossible.
+$("#event-track-panel")?.addEventListener("click", async (event) => {
+  const button = event.target.closest("#event-track-fetch");
+  if (!button || button.disabled || button.hidden) return;
+  const panel = event.currentTarget;
+  const eventId = panel.dataset.eventId;
+  if (!eventId) return;
+  if (!window.confirm(t("fr24_track_confirm").replace("{credits}", panel.dataset.credits || ""))) return;
+  button.disabled = true;
+  const resultBox = $("#event-track-result");
+  if (resultBox) resultBox.textContent = t("fr24_track_fetching");
+  try {
+    const done = await api(`/api/fr24/events/${encodeURIComponent(eventId)}/track`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    });
+    await loadEventDetail(eventId); // rerender; status flips to already_fetched
+    // B3: flash AFTER the reload so fr24_track_success is actually consumed
+    // and visible next to the now-disabled button.
+    const refs = $("#event-track-result");
+    if (refs) {
+      refs.textContent = t("fr24_track_success")
+        .replace("{records}", String(done.records_returned ?? ""))
+        .replace("{credits}", String(done.estimated_credits ?? ""));
+    }
+  } catch (error) {
+    const detail = String(error.message || "");
+    let message = TRACK_BLOCKED_KEYS[detail] ? t(TRACK_BLOCKED_KEYS[detail]) : "";
+    if (!message && detail.includes("pause_fr24")) message = t("fr24_track_blocked_paused");
+    if (resultBox) resultBox.textContent = message || t("fr24_track_error").replace("{detail}", detail);
     button.disabled = false;
   }
 });

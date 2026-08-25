@@ -108,9 +108,6 @@ SETTING_DEFS: dict[str, SettingDef] = {
     "fr24_fetch_summary_on_entry": SettingDef(
         "FR24_FETCH_SUMMARY_ON_ENTRY", True, kind="bool"
     ),
-    "fr24_fetch_track_on_event": SettingDef(
-        "FR24_FETCH_TRACK_ON_EVENT", False, kind="bool"
-    ),
     "fr24_usage_sync_enabled": SettingDef("FR24_USAGE_SYNC_ENABLED", True, kind="bool"),
     # Defaults off: FLIGHTRADAR_API.md sec. 17's 30-day deletion requirement
     # has a written-agreement exception, and this deployment's operator has

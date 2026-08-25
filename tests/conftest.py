@@ -30,26 +30,36 @@ EnvSettings.model_config["env_file"] = None
 env_settings.cache_clear()
 
 
-@pytest.fixture(autouse=True)
-def clean_database():
+_CLEANUP_TABLES = (
+    "app_settings",
+    "areas",
+    "query_regions",
+    "dataset_syncs",
+    "poll_runs",
+    "aircraft_state",
+    "fr24_tracks",
+    "events",
+    "provider_requests",
+    "fr24_cluster_areas",
+    "fr24_clusters",
+    "fr24_poll_runs",
+    "fr24_request_log",
+    "fr24_enrichment",
+    "config_audit_log",
+)
+
+
+def wipe_database() -> None:
+    """Wipe every table. Exposed (in addition to the autouse fixture) so tests
+    can exercise the cleanup itself -- e.g. proving a new table is covered."""
     env_settings.cache_clear()
     init_db()
     with db() as conn:
-        for table in (
-            "app_settings",
-            "areas",
-            "query_regions",
-            "dataset_syncs",
-            "poll_runs",
-            "aircraft_state",
-            "events",
-            "provider_requests",
-            "fr24_cluster_areas",
-            "fr24_clusters",
-            "fr24_poll_runs",
-            "fr24_request_log",
-            "fr24_enrichment",
-            "config_audit_log",
-        ):
+        for table in _CLEANUP_TABLES:
             conn.execute(f"DELETE FROM {table}")
+
+
+@pytest.fixture(autouse=True)
+def clean_database():
+    wipe_database()
     yield

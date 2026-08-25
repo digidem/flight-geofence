@@ -1,12 +1,13 @@
 import asyncio
 import calendar
+import hashlib
 import json
 import logging
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ import httpx
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -37,7 +38,10 @@ from .database import (
     event_counts,
     fr24_cluster_area_ids,
     fr24_cluster_missing_area_ids,
+    get_event,
     get_fr24_cluster,
+    get_fr24_enrichment,
+    get_fr24_track_by_event,
     get_query_regions,
     init_db,
     latest_fr24_poll,
@@ -50,6 +54,7 @@ from .database import (
     retryable_email_events,
     review_event,
     save_fr24_cluster,
+    save_fr24_track,
     save_poll_run,
     selected_area_ids,
     set_area_selection,
@@ -71,7 +76,7 @@ from .geofences import GeofenceIndex
 from .i18n import get_translations, t
 from .locks import exclusive_job_lock
 from .providers import PROVIDER_INFO, fetch_all, test_provider
-from .providers.fr24 import FR24Failure, fetch_light
+from .providers.fr24 import FR24Failure, fetch_light, fetch_track
 from .settings_store import (
     SETTING_DEFS,
     clear_setting,
@@ -913,3 +918,133 @@ async def fr24_test(request: Request):
         "aircraft_found": result.raw_count,
         "estimated_credits": result.estimated_credits,
     }
+
+
+# --- Manual FR24 Tracks ------------------------------------------------------
+# Tracks are the most expensive endpoint (~40 credits per returned flight) and
+# are fetched ONLY through this authenticated, explicitly confirmed, audited
+# action -- no automated path ever calls fetch_track(). The GET endpoint is
+# the cost/availability preview; fetch_track() owns all fr24_request_log
+# accounting, so these routes never call record_fr24_request themselves.
+
+
+class TrackFetchRequest(BaseModel):
+    confirm: StrictBool = False  # B1: JSON "true"/1 must NOT coerce into consent
+
+
+def _resolve_event_fr24_id(event: dict[str, Any]) -> str | None:
+    """FR24 ID lookup order: event details first, then the enrichment row for
+    the episode. Events persist the episode ID only (app/detection.py);
+    enrichment persists the FR24 ID explicitly."""
+    details = event.get("details")
+    if isinstance(details, dict):
+        direct = details.get("fr24_id")
+        if isinstance(direct, str) and direct.strip():
+            return direct.strip()
+        episode_id = details.get("episode_id")
+        if episode_id:
+            enrichment = get_fr24_enrichment(event["aircraft_hex"], str(episode_id))
+            if enrichment:
+                candidate = enrichment.get("fr24_id")
+                if isinstance(candidate, str) and candidate.strip():
+                    return candidate.strip()
+    return None
+
+
+def _pause_fr24_budget_block() -> bool:
+    """True only when spending is paused: policy=pause_fr24 AND budget
+    exhausted. warn_only / continue_until_provider_rejects never block a
+    deliberate manual spend -- only the paused state does."""
+    if get_setting("fr24_budget_policy") != "pause_fr24":
+        return False
+    bcid = fr24_credits.billing_cycle_id(datetime.now(UTC))
+    used = credits_used_this_cycle(bcid)
+    operating_budget = int(get_setting("fr24_monthly_operating_budget"))
+    return fr24_credits.budget_state(used, operating_budget) == "exhausted"
+
+
+@app.get("/api/fr24/events/{event_id}/track")
+async def fr24_track_status(request: Request, event_id: str):
+    require_auth(request)
+    event = get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    fr24_id = _resolve_event_fr24_id(event)
+    existing = get_fr24_track_by_event(event_id, equivalent_fr24_id=fr24_id)
+    blocked_reason = None
+    if not fr24_id:
+        blocked_reason = "missing_fr24_id"
+    elif existing:
+        blocked_reason = "already_fetched"
+    elif _pause_fr24_budget_block():
+        blocked_reason = "budget_exhausted_pause_fr24"
+    return {
+        "available": blocked_reason is None,
+        "event_id": event_id,
+        "fr24_id": fr24_id,
+        "already_fetched": existing is not None,
+        "estimated_credits": fr24_credits.estimate_track_credits(1),
+        "blocked_reason": blocked_reason,
+    }
+
+
+@app.post("/api/fr24/events/{event_id}/track")
+async def fr24_track_fetch(request: Request, event_id: str, payload: TrackFetchRequest):
+    require_auth(request)
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="Track fetch requires confirm=true")
+    event = get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    fr24_id = _resolve_event_fr24_id(event)
+    if not fr24_id:
+        raise HTTPException(status_code=409, detail="missing_fr24_id")
+    if get_fr24_track_by_event(event_id, equivalent_fr24_id=fr24_id):
+        raise HTTPException(status_code=409, detail="already_fetched")
+    # Per-ID cross-process lock closes the duplicate-spend window between the
+    # pre-check above and the INSERT; UNIQUE(fr24_id) remains the final guard.
+    lock_name = f"fr24-track-{hashlib.sha256(fr24_id.encode('utf-8')).hexdigest()}"
+    with exclusive_job_lock(lock_name) as acquired:
+        if not acquired:
+            raise HTTPException(status_code=409, detail="request_in_progress")
+        if get_fr24_track_by_event(event_id, equivalent_fr24_id=fr24_id):
+            raise HTTPException(status_code=409, detail="already_fetched")
+        if _pause_fr24_budget_block():
+            raise HTTPException(
+                status_code=409,
+                detail="FR24 budget exhausted (policy=pause_fr24): manual track fetch refused",
+            )
+        try:
+            timeout = httpx.Timeout(cfg.http_timeout_seconds)
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                track_payload = await fetch_track(
+                    client,
+                    fr24_id,
+                    billing_cycle_id=fr24_credits.billing_cycle_id(datetime.now(UTC)),
+                )
+        except FR24Failure as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        records_returned = len(track_payload.get("data") or [])
+        saved = save_fr24_track(
+            event_id=event_id,
+            aircraft_hex=event["aircraft_hex"],
+            fr24_id=fr24_id,
+            payload=track_payload,
+            requested_by="authenticated_admin",
+            estimated_credits=fr24_credits.estimate_track_credits(records_returned),
+        )
+        if not saved:
+            # Integrity loser: the parent event may have been deleted mid-flight.
+            if get_event(event_id) is None:
+                raise HTTPException(status_code=404, detail="Event not found")
+            raise HTTPException(status_code=409, detail="already_fetched")
+        record_config_audit(f"fr24_track:{event_id}", None, fr24_id, "authenticated_admin")
+        stored = get_fr24_track_by_event(event_id)
+        return {
+            "fetched": True,
+            "event_id": event_id,
+            "fr24_id": fr24_id,
+            "records_returned": records_returned,
+            "estimated_credits": fr24_credits.estimate_track_credits(records_returned),
+            "created_at": stored["created_at"] if stored else "",
+        }

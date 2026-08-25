@@ -151,7 +151,12 @@ async def _request(
             if attempt < 2:
                 await asyncio.sleep(_retry_delay(response, attempt))
     latency_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
-    failure = FR24Failure(f"FR24 request failed for {_sanitize_for_log(url)}: {last_error}")
+    # last_error (httpx exceptions embed the full request URL, query string
+    # included) gets the same query-stripping as our own URL -- surfaced
+    # messages must never carry request parameters.
+    failure = FR24Failure(
+        f"FR24 request failed for {_sanitize_for_log(url)}: {_sanitize_for_log(str(last_error))}"
+    )
     failure.latency_ms = latency_ms
     failure.retry_count = attempt
     raise failure

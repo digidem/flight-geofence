@@ -399,9 +399,16 @@ Key properties of this integration:
   called only exceptionally, throttled to once per hour per cluster, when a cluster's response is
   possibly truncated by the configured record limit. Summary Full (enrichment) costs more per call
   and is used sparingly — only for new candidate aircraft entering a monitored area, and only when
-  `FR24_FETCH_SUMMARY_ON_ENTRY` is enabled. Full flight history (Tracks) is the most expensive
-  endpoint and is intentionally **not** fetched by any automated path in this release; wiring up an
-  on-demand, manually-triggered Tracks lookup is tracked as a follow-up.
+  `FR24_FETCH_SUMMARY_ON_ENTRY` is enabled. Full flight history (Tracks) is the most
+  expensive endpoint (40 credits per returned flight) and is fetched **only** through an explicit,
+  authenticated manual action on an event — never automatically. The action previews the estimated
+  cost before invocation and requires confirmation; it refuses events without a Flightradar24 ID,
+  refuses duplicate downloads for as long as the track is retained (a second request never spends
+  the cost twice), is blocked when `FR24_BUDGET_POLICY=pause_fr24` has paused FR24 at full budget,
+  and records who initiated it in the audit log. The retired `FR24_FETCH_TRACK_ON_EVENT`
+  automation flag was removed: deployments that still set it to any nonblank value now **fail
+  startup validation loudly by design** — remove the variable from your environment/`.env`;
+  manual Tracks need no enable flag.
 - **Budget guardrails.** A configurable monthly credit budget (`FR24_MONTHLY_OPERATING_BUDGET`) is
   tracked against actual usage. At 70%+ of budget the scheduler suppresses non-essential calls
   (enrichment, daily usage-sync); at 85%+ and 95%+ it logs escalating warnings. `FR24_BUDGET_POLICY`
