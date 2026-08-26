@@ -60,7 +60,8 @@ The first operational configuration should:
 * avoid automatic flight-track downloads;
 * remain viable within the normal 30,000-credit Explorer allocation where actual traffic allows.
 
-Do not remove or weaken the provider abstraction.
+Do not remove or weaken the provider abstraction. A retained `flightradar24` value in
+`FLIGHT_PROVIDERS` is skipped compatibly and surfaced as a Settings warning linking to the FR24 tab.
 
 ---
 
@@ -727,7 +728,7 @@ Rules:
 * cache enrichment for the current aircraft episode;
 * do not enrich on every observation;
 * do not repeat successful enrichment during the same episode;
-* allow a controlled retry when a previous response was empty or incomplete;
+* retry a failed Summary Full enrichment at most two additional times (three total attempts: +1 poll cycle, then +2 cycles) before terminal; success at any attempt persists as terminal;
 * batch candidate IDs when possible;
 * use no more than 10 `flight_ids` per request until the official API and sandbox conclusively confirm a higher limit.
 
@@ -761,30 +762,14 @@ Current cost:
 40 credits per returned flight
 ```
 
-Do not automatically download tracks in the initial Explorer configuration.
+Tracks are fetched exclusively through an authenticated manual action on an event — never automatically. Provide an authenticated manual flow:
 
-Default:
+* `GET /api/fr24/events/{event_id}/track` previews availability, estimated cost (40 credits per returned flight), and blocked reasons;
+* `POST /api/fr24/events/{event_id}/track` with `{confirm:true}` fetches the track after validating the event has an FR24 ID, the track was not already fetched, and the budget policy has not paused FR24 at full exhaustion;
+* missing ID, duplicate, or paused-budget return 409 (refusal names `pause_fr24`); provider failures surface as 502 without partial storage;
+* a successful fetch persists the raw validated payload, requesting actor, and credited cost in `fr24_tracks` for as long as its event is retained (duplicates stay refused while that record exists; event-to-track `ON DELETE CASCADE`).
 
-```env
-FR24_FETCH_TRACK_ON_EVENT=false
-```
-
-Provide an authenticated manual action:
-
-```text
-Fetch FR24 track — estimated 40 credits
-```
-
-Before invoking:
-
-* show the estimated credit cost;
-* require confirmation;
-* ensure the event has an FR24 ID;
-* prevent duplicate downloads;
-* respect retention rules;
-* audit who initiated the action.
-
-Automatic track fetching may later be enabled only after reviewing actual monthly credit use.
+The retired `FR24_FETCH_TRACK_ON_EVENT` automation flag rejects any nonblank value at startup by design; no enable flag exists for manual Tracks.
 
 ---
 
@@ -906,7 +891,7 @@ pause_fr24
 continue_until_provider_rejects
 ```
 
-Default should be selected explicitly in configuration rather than assumed.
+The shipped default is `pause_fr24`; deployments may explicitly select any supported policy.
 
 ---
 
@@ -1038,22 +1023,15 @@ Apply retention to:
 * cached provider responses;
 * logs that contain FR24 data.
 
-Add explicit metadata:
+Apply explicit provenance:
 
-```text
-fr24_received_at
-fr24_delete_after
-```
+* `events.fr24_received_at` for FR24 receipt time;
+* `events.occurred_at` as the cutoff for FR24 event cleanup;
+* `fr24_tracks.created_at` for track audit time;
+* `aircraft_state.updated_at` for outside-state cleanup;
+* `fr24_tracks` rows cascade on event deletion (`ON DELETE CASCADE`).
 
-Implement a daily cleanup task.
-
-Cleanup requirements:
-
-* idempotent;
-* transaction-safe;
-* logged without reproducing deleted telemetry;
-* testable with a controlled clock;
-* capable of removing provider-derived fields from longer-lived application events.
+No `fr24_delete_after` column exists. Cleanup runs from the coverage cycle when `FR24_AUTO_DELETE_ENABLED=true` (daily sweep, idempotent and transaction-safe, logged without reproducing telemetry, testable with a controlled clock).
 
 The plan must distinguish:
 
@@ -1083,7 +1061,7 @@ FR24_PLAN=explorer
 FR24_PLAN_MONTHLY_CREDITS=30000
 FR24_MONTHLY_OPERATING_BUDGET=28000
 FR24_PROMOTIONAL_CREDITS=
-FR24_BUDGET_POLICY=warn_only
+FR24_BUDGET_POLICY=pause_fr24
 
 FR24_POLL_INTERVAL_SECONDS=300
 FR24_INTER_CLUSTER_DELAY_SECONDS=2
@@ -1097,10 +1075,9 @@ FR24_CLUSTER_BUFFER_KM=15
 
 FR24_FETCH_SUMMARY_ON_ENTRY=true
 FR24_SUMMARY_VARIANT=full
-FR24_FETCH_TRACK_ON_EVENT=false
-
 FR24_USAGE_SYNC_ENABLED=true
-FR24_RETENTION_DAYS=30
+FR24_RETENTION_DAYS=29
+FR24_AUTO_DELETE_ENABLED=false
 ```
 
 Follow the project’s existing configuration precedence rules.
@@ -1140,7 +1117,9 @@ Add or refine authenticated controls for:
 * projected monthly credit use;
 * current usage;
 * truncation warnings;
-* retention cleanup state;
+* FR24 events — indefinite while `FR24_AUTO_DELETE_ENABLED=false`, otherwise `min(FR24_RETENTION_DAYS, 29)`;
+* FR24 outside aircraft state — indefinite while auto-delete off, otherwise `STATE_RETENTION_DAYS`;
+* free-provider outside aircraft state — always `STATE_RETENTION_DAYS` (independent of auto-delete);
 * last successful poll;
 * last provider error.
 
@@ -1306,14 +1285,14 @@ Test:
 * cluster A success and cluster B failure;
 * both clusters empty;
 * duplicate aircraft in overlapping clusters;
-* candidate enrichment once per episode;
+* candidate enrichment once per episode (successful/terminal) with bounded failed-call retries;
 * enrichment failure not blocking detection;
 * truncation not advancing disappearance;
 * failed FR24 poll not advancing disappearance;
 * UI-managed encrypted token;
 * environment token precedence;
 * billing-cycle projection;
-* cleanup after 30 days;
+* cleanup after min(FR24_RETENTION_DAYS, 29) / STATE_RETENTION_DAYS with cascade;
 * existing non-FR24 providers still work.
 
 ## Sandbox tests
@@ -1467,13 +1446,13 @@ Do not:
 * query entire Brazilian states;
 * use Live Positions Full every five minutes;
 * call Count before every poll;
-* download tracks automatically by default;
+* download tracks automatically;
 * implement a strict aircraft-type allowlist initially;
 * implement a ground-speed filter initially;
 * remove `N` without measured evidence;
 * infer legality from aircraft category;
 * alter alert thresholds without documenting the cadence impact;
-* store FR24 data beyond 30 days;
+* store FR24 data beyond 30 days unless the written-agreement exception applies;
 * expose the FR24 token;
 * rely on promotional credits for viability;
 * silently change polling behavior to save credits;
@@ -1540,9 +1519,9 @@ After approval and implementation, the task is complete only when:
 7. standard Explorer viability is visible;
 8. 20-record responses are treated as potentially truncated;
 9. Count is exceptional rather than routine;
-10. candidate enrichment uses Summary Full once per episode;
-11. Tracks are manual by default;
-12. FR24-derived data is deleted within 30 days;
+10. candidate enrichment uses Summary Full once per episode (with bounded retries for failed calls);
+11. Tracks are manual only;
+12. FR24-derived data is deleted within min(FR24_RETENTION_DAYS, 29) / STATE_RETENTION_DAYS unless the written-agreement exception applies;
 13. failed or incomplete calls never create disappearance evidence;
 14. secrets remain protected;
 15. existing providers continue working;

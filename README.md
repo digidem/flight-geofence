@@ -400,7 +400,9 @@ Key properties of this integration:
   called only exceptionally, throttled to once per hour per cluster, when a cluster's response is
   possibly truncated by the configured record limit. Summary Full (enrichment) costs more per call
   and is used sparingly — only for new candidate aircraft entering a monitored area, and only when
-  `FR24_FETCH_SUMMARY_ON_ENTRY` is enabled. Full flight history (Tracks) is the most
+  `FR24_FETCH_SUMMARY_ON_ENTRY` is enabled. A failed Summary Full enrichment is tried at most three
+  times per episode, retrying after one and two poll cycles before giving up. Full flight history
+  (Tracks) is the most
   expensive endpoint (40 credits per returned flight) and is fetched **only** through an explicit,
   authenticated manual action on an event — never automatically. The action previews the estimated
   cost before invocation and requires confirmation; it refuses events without a Flightradar24 ID,
@@ -428,7 +430,10 @@ Key properties of this integration:
   Setting `FR24_AUTO_DELETE_ENABLED=true` re-enables deletion for deployments without that
   authority: FR24 *events* are deleted after `FR24_RETENTION_DAYS` (capped at 29 days), and FR24
   *aircraft state* rows are cleaned up under the same general `STATE_RETENTION_DAYS` (default 14
-  days) window used for every other provider's stale state.
+  days) window used for every other provider's stale state. The FR24 dashboard shows three distinct
+  rows: FR24 events are indefinite while auto-delete is off and otherwise use `min(FR24_RETENTION_DAYS, 29)`;
+  FR24 outside state is indefinite while auto-delete is off and otherwise uses `STATE_RETENTION_DAYS`; free-provider
+  outside state always uses `STATE_RETENTION_DAYS`.
 
 ```env
 FR24_ENABLED=true

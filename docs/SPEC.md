@@ -81,7 +81,9 @@ Adapters:
 
 Flightradar24 (Explorer plan) is a separate, cost-controlled adapter — see "Flightradar24
 Explorer plan requirements" below. It is not part of the free-provider query-region grid; its
-legacy unfiltered/unbounded polling path has been retired entirely.
+legacy unfiltered/unbounded polling path has been retired entirely. A retained
+`flightradar24` value in `FLIGHT_PROVIDERS` is ignored without blocking other providers and appears as
+a Settings warning linking to the FR24 tab.
 
 Each adapter must:
 
@@ -119,7 +121,8 @@ When multiple free providers are enabled:
   without partial storage. Fetched tracks persist with the raw validated payload, requesting
   actor, and credited cost for as long as their event is retained; duplicates stay refused while
   that record exists. The retired `FR24_FETCH_TRACK_ON_EVENT` flag rejects any nonblank value at
-  startup by design.
+  startup by design. A failed Summary Full enrichment is tried at most three times per episode,
+  retrying after one and two poll cycles before giving up.
 - Track a configurable monthly credit budget against actual usage; suppress non-essential calls
   (enrichment, usage sync) once spend crosses the warning threshold (70%). Escalating budget
   states above that (critical, hard-limit) are logged but do not themselves stop routine Light
@@ -134,7 +137,10 @@ When multiple free providers are enabled:
 - Default to indefinite retention of Flightradar24-sourced events and aircraft state (auto-delete
   off) when the operator holds documented governmental authority to retain the data — the
   written-agreement exception to the 30-day storage ceiling below. Auto-delete, when explicitly
-  enabled, still enforces that ceiling.
+  enabled, still enforces that ceiling. The dashboard shows three distinct retention rows: FR24 events
+  are indefinite while auto-delete is off and otherwise use `min(FR24_RETENTION_DAYS, 29)`; FR24 outside
+  state is indefinite while auto-delete is off and otherwise uses `STATE_RETENTION_DAYS`; free-provider
+  outside state always uses `STATE_RETENTION_DAYS`.
 
 ## Detection requirements
 
@@ -195,6 +201,9 @@ When multiple free providers are enabled:
 - Delete Flightradar24-sourced events and aircraft state before the provider's 30-day storage
   ceiling *unless* the operator has documented governmental authority to retain the data
   indefinitely (the written-agreement exception), in which case auto-deletion defaults off.
+- Dashboard retention presentation mirrors this rule: when auto-delete is off, FR24 events and FR24
+  outside state are shown as indefinite; otherwise FR24 events use `min(FR24_RETENTION_DAYS, 29)` and FR24
+  outside state uses `STATE_RETENTION_DAYS`; free-provider outside state always shows `STATE_RETENTION_DAYS`.
 - Support consistent SQLite online backup.
 - Prevent manual CLI poll/sync from overlapping the server scheduler with cross-process file locks.
 
