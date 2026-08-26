@@ -40,7 +40,7 @@ docker build --pull -t flight-geofence-alerts:local .
 - Use Python 3.12 and keep lines within the repository's 100-character target where practical.
 - Keep HTTP/provider logic asynchronous and provider-specific parsing under `app/providers/`.
 - Normalize every provider response to `AircraftObservation`; keep provider details out of detection logic.
-- After any user-visible FR24 change (budget policy, manual Tracks flow, enrichment retries, legacy-provider warning, retention windows, CAS), sweep all four doc surfaces together in one commit: `README.md` + `docs/SPEC.md` + `.env.example` + `FLIGHTRADAR_API.md` (`TASK.md` stays historical and is intentionally not swept).
+- After any user-visible FR24 change (budget policy, manual Tracks flow, enrichment retries, legacy-provider warning, retention windows, CAS), sweep all four doc surfaces together in one commit: `README.md` + `docs/SPEC.md` + `.env.example` + `FLIGHTRADAR_API.md`.
 - Access SQLite through `app/database.py`. Schema changes must be additive and compatible with existing persistent volumes.
 - Add configurable UI settings through `SETTING_DEFS`; environment values must continue to override and lock interface values.
 - Keep official boundary downloads out of the repository. Preserve weekly FUNAI/CNUC discovery, validation, safe extraction, and rollback behavior.
