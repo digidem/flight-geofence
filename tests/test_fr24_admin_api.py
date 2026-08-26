@@ -1,6 +1,9 @@
+import ast
 import json
 from datetime import UTC, datetime, timezone
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from shapely.geometry import Polygon, mapping
 
@@ -297,3 +300,87 @@ def test_fr24_test_blocked_when_budget_exhausted_under_pause_policy():
 
     response = client.post("/api/fr24/test")
     assert response.status_code == 400
+
+
+FR24_STATUS_EXISTING_KEYS = {
+    "enabled",
+    "enabled_source",
+    "api_key_configured",
+    "api_key_source",
+    "blockers",
+    "active_clusters",
+    "max_active_clusters",
+    "plan_monthly_credits",
+    "operating_budget",
+    "promotional_credits",
+    "credits_used_this_cycle",
+    "budget_state",
+    "all_empty_baseline",
+    "projected_end_of_cycle_credits",
+    "billing_cycle_id",
+    "latest_poll",
+    "overlap_warnings",
+}
+
+
+def _load_translations_for_parity():
+    """Load TRANSLATIONS from i18n.py by executing its AST assign."""
+    path = Path(__file__).resolve().parent.parent / "app" / "i18n.py"
+    tree = ast.parse(path.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "TRANSLATIONS":
+                    ns: dict = {}
+                    exec(compile(ast.Module(body=[node], type_ignores=[]), "<i18n>", "exec"), ns)
+                    return ns["TRANSLATIONS"]
+    raise AssertionError("TRANSLATIONS not found in i18n.py")
+
+
+def test_status_payload_includes_retention_fields():
+    client = _authed_client()
+    body = client.get("/api/fr24/status").json()
+    assert body["retention_events_days"] == min(29, 29)
+    assert body["retention_state_days"] == 14
+    assert body["auto_delete_enabled"] is False
+    # Additive-only contract: every pre-existing status key must remain.
+    missing = FR24_STATUS_EXISTING_KEYS - set(body)
+    assert not missing, f"Pre-existing status keys dropped: {missing}"
+
+
+@pytest.mark.parametrize(
+    ("env_value", "expected"),
+    [("17", 17), ("45", 29)],
+)
+def test_retention_values_follow_env_overrides(monkeypatch, env_value, expected):
+    import app.main as main_module
+    from app.config import EnvSettings, env_settings
+
+    # cfg is captured at import time (app/main.py); rebuild it from the
+    # monkeypatched environment so the handler reports the overridden
+    # structurals, exactly like an operator exporting them.
+    monkeypatch.setenv("FR24_RETENTION_DAYS", env_value)
+    monkeypatch.setenv("STATE_RETENTION_DAYS", "21")
+    env_settings.cache_clear()
+    monkeypatch.setattr(main_module, "cfg", EnvSettings())
+    set_setting("fr24_auto_delete_enabled", True)
+    client = _authed_client()
+    body = client.get("/api/fr24/status").json()
+    assert body["retention_events_days"] == expected
+    assert body["retention_state_days"] == 21
+    assert body["auto_delete_enabled"] is True
+
+
+def test_fr24_retention_keys_ship_in_both_languages():
+    tr = _load_translations_for_parity()
+    expected = {
+        "fr24_retention_title",
+        "fr24_retention_events",
+        "fr24_retention_fr24_states",
+        "fr24_retention_free_states",
+        "fr24_retention_indefinite",
+        "fr24_retention_days",
+    }
+    for lang in ("en", "pt"):
+        missing = expected - set(tr[lang].keys())
+        assert not missing, f"Missing FR24 retention keys in {lang}: {missing}"

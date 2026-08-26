@@ -871,6 +871,12 @@ async def fr24_status(request: Request):
         "billing_cycle_id": bcid,
         "latest_poll": latest_fr24_poll(),
         "overlap_warnings": active_cluster_overlaps(clusters),
+        # Retention visibility (roadmap §6.6): expose both effective windows
+        # and the auto-delete gate. Additive-only -- existing consumers keep
+        # working; presentation stays in the dashboard.
+        "retention_events_days": min(cfg.fr24_retention_days, 29),
+        "retention_state_days": cfg.state_retention_days,
+        "auto_delete_enabled": bool(get_setting("fr24_auto_delete_enabled")),
     }
 
 
