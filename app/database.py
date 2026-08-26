@@ -1,12 +1,15 @@
 import json
+import logging
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .config import env_settings
+
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> datetime:
@@ -149,7 +152,8 @@ def init_db() -> None:
                 episode_id TEXT,
                 stop_alerted INTEGER NOT NULL DEFAULT 0 CHECK(stop_alerted IN (0,1)),
                 disappeared_alerted INTEGER NOT NULL DEFAULT 0 CHECK(disappeared_alerted IN (0,1)),
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                updated_seq INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_aircraft_state_updated ON aircraft_state(updated_at);
 
@@ -336,6 +340,12 @@ def init_db() -> None:
         # once, while ok/empty rows stay terminal.
         _ensure_column(conn, "fr24_enrichment", "attempts INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "fr24_enrichment", "next_retry_at TEXT")
+        # Cross-loop optimistic concurrency control for aircraft_state
+        # writers (roadmap §6.5): every write through the cas_upsert_state
+        # funnel is conditioned on the revision its caller read, closing the
+        # FR24/free-grid lost-update window. Legacy volumes backfill to
+        # sequence 0 so the first conditional update naturally succeeds.
+        _ensure_column(conn, "aircraft_state", "updated_seq INTEGER NOT NULL DEFAULT 0")
 
 
 def database_ok() -> bool:
@@ -951,20 +961,140 @@ def get_state(aircraft_hex: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def upsert_state(state: dict[str, Any]) -> None:
-    state = dict(state)
-    state.setdefault("updated_at", utc_now_iso())
-    columns = list(state)
+def _insert_aircraft_state(payload: dict[str, Any]) -> int:
+    """Insert-on-absent attempt; a new row's revision starts at 1."""
+    columns = list(payload)
+    placeholders = ",".join("?" for _ in columns)
+    with db() as conn:
+        cursor = conn.execute(
+            f"INSERT INTO aircraft_state({','.join(columns)}, updated_seq) "
+            f"VALUES({placeholders}, 1) "
+            "ON CONFLICT(aircraft_hex) DO NOTHING",
+            [payload[column] for column in columns],
+        )
+    return int(cursor.rowcount)
+
+
+def _cas_update_aircraft_state(payload: dict[str, Any], expected_seq: int) -> int:
+    """Conditional update landing only while the row still sits at the
+    revision its caller read. Single statement -- a crash cannot leave a
+    partial row."""
+    assignments = ",".join(f"{column}=?" for column in payload)
+    with db() as conn:
+        cursor = conn.execute(
+            f"UPDATE aircraft_state SET {assignments}, updated_seq=updated_seq+1 "
+            f"WHERE aircraft_hex=? AND updated_seq=?",
+            [*payload.values(), payload["aircraft_hex"], expected_seq],
+        )
+    return int(cursor.rowcount)
+
+
+def _unconditional_upsert_aircraft_state(
+    payload: dict[str, Any], current_seq: int
+) -> int:
+    """Atomic last-writer-wins fallback, used only after the bounded CAS
+    retry also conflicts. One statement; on conflict the row's CURRENT LIVE
+    sequence is advanced inside the statement (updated_seq =
+    aircraft_state.updated_seq + 1), never a value re-read earlier -- so a
+    writer that raced the re-read cannot leave stale same-sequence snapshots
+    able to re-pass the CAS guard afterwards."""
+    columns = list(payload)
     placeholders = ",".join("?" for _ in columns)
     updates = ",".join(
         f"{column}=excluded.{column}" for column in columns if column != "aircraft_hex"
     )
     with db() as conn:
-        conn.execute(
-            f"INSERT INTO aircraft_state({','.join(columns)}) VALUES({placeholders}) "
-            f"ON CONFLICT(aircraft_hex) DO UPDATE SET {updates}",
-            [state[column] for column in columns],
+        cursor = conn.execute(
+            f"INSERT INTO aircraft_state({','.join(columns)}, updated_seq) "
+            f"VALUES({placeholders}, ?) "
+            f"ON CONFLICT(aircraft_hex) DO UPDATE SET {updates}, "
+            "updated_seq=aircraft_state.updated_seq+1",
+            [*[payload[column] for column in columns], current_seq + 1],
         )
+    return int(cursor.rowcount)
+
+
+def _newer_than(incoming_ts: str | None, committed_ts: str | None) -> bool:
+    """Strict > rule on last_seen_at, mirroring _merge_observation: the
+    committed state wins on equality and whenever either timestamp is
+    missing or invalid."""
+    try:
+        incoming = datetime.fromisoformat(incoming_ts) if incoming_ts else None
+        committed = datetime.fromisoformat(committed_ts) if committed_ts else None
+    except ValueError:
+        return False
+    if incoming is None or committed is None:
+        return False
+    if incoming.tzinfo is None:
+        incoming = incoming.replace(tzinfo=UTC)
+    if committed.tzinfo is None:
+        committed = committed.replace(tzinfo=UTC)
+    return incoming > committed
+
+
+def cas_upsert_state(state: dict[str, Any]) -> None:
+    """Optimistic-concurrency write funnel for aircraft_state.
+
+    Every detection-path writer lands here (detection.py's five upsert_state
+    call sites all delegate), closing the cross-loop lost-update window in
+    which process_missing()'s active_states() snapshot was unconditionally
+    restored over a fresher free-grid observation. ``updated_seq`` present
+    in the input means "update revision N"; absent means insert-only. On a
+    lost race the payload is retried once against the re-read revision when
+    its last_seen_at is strictly newer than the committed one; otherwise the
+    committed -- fresher or equal, hence serialized -- outcome stands. Under
+    pathological contention both conditional attempts may lose: that falls
+    back to one warned, atomic last-writer-wins upsert -- never a deadlock,
+    never a silent drop.
+    """
+    payload = dict(state)
+    seq = payload.pop("updated_seq", None)
+    aircraft_hex = payload["aircraft_hex"]
+    if seq is None:
+        payload.setdefault("updated_at", utc_now_iso())
+        if _insert_aircraft_state(payload):
+            return
+    elif _cas_update_aircraft_state(payload, int(seq)):
+        return
+
+    # Lost the first race (or the row vanished mid-flight): resolve once.
+    committed = get_state(aircraft_hex)
+    if committed is not None and _newer_than(
+        payload.get("last_seen_at"), committed.get("last_seen_at")
+    ):
+        if _cas_update_aircraft_state(payload, int(committed.get("updated_seq") or 0)):
+            return
+        # Second conflict under pathological contention: bounded fallback.
+        committed = get_state(aircraft_hex)
+        logger.warning(
+            "aircraft_state.cas_conflict_fallback aircraft_hex=%s "
+            "falling back to unconditional last-writer-wins upsert",
+            aircraft_hex,
+        )
+        _unconditional_upsert_aircraft_state(
+            payload, int(committed.get("updated_seq") or 0) if committed else 0
+        )
+        return
+    if committed is None:
+        # Deletion between read and retry converts the retry to insert-on-absent.
+        if _insert_aircraft_state(payload):
+            return
+        logger.warning(
+            "aircraft_state.cas_conflict_fallback aircraft_hex=%s "
+            "insert race resolved by unconditional upsert",
+            aircraft_hex,
+        )
+        committed = get_state(aircraft_hex)
+        _unconditional_upsert_aircraft_state(
+            payload, int(committed.get("updated_seq") or 0) if committed else 0
+        )
+    # else: the committed state is equal-or-fresher -- it already holds the
+    # serialized outcome, so this stale writer yields without writing.
+
+
+def upsert_state(state: dict[str, Any]) -> None:
+    """Compatibility entry point -- every writer funnels through CAS."""
+    cas_upsert_state(state)
 
 
 def active_states() -> list[dict[str, Any]]:
