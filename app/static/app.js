@@ -53,6 +53,15 @@ function t(key) {
   return (dict[lang] && dict[lang][key]) || (dict.en && dict.en[key]) || key;
 }
 
+function renderLegacyProviderWarning(payload, target) {
+  const values = Array.isArray(payload?.settings?.flight_providers?.value)
+    ? payload.settings.flight_providers.value
+    : [];
+  const visible = values.includes("flightradar24");
+  target?.toggleAttribute("hidden", !visible);
+  return visible;
+}
+
 function detectBrowserLanguage() {
   const browserLang = navigator.language || navigator.userLanguage || "en";
   const langCode = browserLang.toLowerCase().split("-")[0];
@@ -834,8 +843,11 @@ async function loadSettings() {
       Object.entries(settings).forEach(([key, setting]) => setField(form, key, setting));
     }
   });
+  // Normalize to an array before this checkbox loop (G-review fix): null/number/object
+  // payload values must degrade gracefully instead of throwing on .includes.
+  const vals = Array.isArray(settings.flight_providers?.value) ? settings.flight_providers.value : [];
   $$("input[name='flight_providers']").forEach((box) => {
-    box.checked = settings.flight_providers.value.includes(box.value);
+    box.checked = vals.includes(box.value);
     box.disabled = settings.flight_providers.locked;
   });
   $("#provider-tests").innerHTML = Object.entries(result.provider_options)
@@ -854,6 +866,7 @@ async function loadSettings() {
     });
   });
 
+  renderLegacyProviderWarning(result, $("#legacy-provider-warning"));
   applyTranslations();
 }
 
@@ -944,6 +957,10 @@ $$(".tab").forEach((tab) => {
     if (tab.dataset.view === "settings") await loadSettings();
     if (tab.dataset.view === "fr24") await loadFr24();
   });
+});
+
+$("#legacy-provider-warning")?.addEventListener("click", () => {
+  $(".tab[data-view='fr24']")?.click();
 });
 
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));

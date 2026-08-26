@@ -376,7 +376,8 @@ Provider credentials can also be saved through the authenticated interface when 
 > poll cycle with no cost ceiling) and it has been removed from the provider picker in the
 > dashboard. If an existing `.env` still lists it, it is silently skipped each cycle with a
 > warning logged rather than blocking the other enabled providers. Flightradar24 is now configured
-> exclusively through the Explorer-plan cluster system described next.
+> exclusively through the Explorer-plan cluster system described next. A retained legacy value in
+> `FLIGHT_PROVIDERS` still appears in Settings as a warning chip linking to the FR24 tab.
 
 ### Flightradar24 Explorer plan (cost-controlled clusters)
 

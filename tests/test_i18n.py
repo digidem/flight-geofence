@@ -102,6 +102,23 @@ class TestTranslationKeyParity:
             missing = expected - set(tr[lang].keys())
             assert not missing, f"Missing FR24 track keys in {lang}: {missing}"
 
+    def test_legacy_provider_warning_keys_present_both_languages(self):
+        """The legacy FLIGHT_PROVIDERS warning key ships with exact copy in PT and EN."""
+        tr = _load_translations()
+        expected_pt = "flightradar24 é ignorado em FLIGHT_PROVIDERS — use a aba FR24"
+        expected_en = "flightradar24 is ignored in FLIGHT_PROVIDERS — use the FR24 tab"
+        for lang, expected in (("pt", expected_pt), ("en", expected_en)):
+            assert tr[lang].get("settings_legacy_provider_warning") == expected, (
+                f"Exact copy mismatch in {lang}"
+            )
+
+    def test_missing_key_fallback_returns_key_name(self):
+        """t() falls back to the raw key name instead of breaking render."""
+        from app.i18n import t
+
+        for lang in ("en", "pt"):
+            assert t("missing_legacy_provider_warning", lang) == "missing_legacy_provider_warning"
+
 
 class TestHtmlI18nCoverage:
     """All visible HTML text should use data-i18n."""
