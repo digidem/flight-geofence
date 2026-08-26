@@ -281,6 +281,24 @@ function fr24LastRunText(latestPoll) {
   return `${when} · ${outcome}`;
 }
 
+function fr24RetentionValue(days, indefinite) {
+  return indefinite ? t("fr24_retention_indefinite") : `${days} ${t("fr24_retention_days")}`;
+}
+
+// Retention presentation (roadmap §6.6): while fr24_auto_delete_enabled is
+// off, FR24-owned rows are kept indefinitely -- but that carve-out protects
+// ONLY FR24 data. cleanup_stale_states still ages free-provider out-of-area
+// states out at state_retention_days, so the free-provider metric always
+// counts down regardless of the flag.
+function fr24RetentionMetrics(status) {
+  const indefinite = !status.auto_delete_enabled;
+  return [
+    metric(t("fr24_retention_events"), fr24RetentionValue(status.retention_events_days, indefinite), ""),
+    metric(t("fr24_retention_fr24_states"), fr24RetentionValue(status.retention_state_days, indefinite), ""),
+    metric(t("fr24_retention_free_states"), `${status.retention_state_days} ${t("fr24_retention_days")}`, ""),
+  ];
+}
+
 async function loadFr24() {
   // Dedicated, unfiltered, selected-only fetch for the area picker -- must
   // never depend on the "Protected areas" tab's own search/category filter
@@ -375,6 +393,7 @@ async function loadFr24() {
       "",
     ),
   ].join("");
+  $("#fr24-retention").innerHTML = fr24RetentionMetrics(status).join("");
   $("#fr24-overlap-warning").textContent = status.overlap_warnings.length
     ? `${t("fr24_overlap_warning")}: ${status.overlap_warnings.map((pair) => pair.join(" / ")).join(", ")}`
     : "";
@@ -659,10 +678,49 @@ async function loadStatus() {
     : `<tr><td colspan="7" class="muted">${t("no_events")}</td></tr>`;
 }
 
+function areaFeedback(message) {
+  const box = $("#area-error");
+  if (!box) return;
+  box.hidden = !message;
+  box.textContent = message || "";
+}
+
+function renderAreaStatus(status) {
+  const line = $("#area-status");
+  if (!line) return;
+  const selected = status?.areas?.selected ?? 0;
+  line.hidden = false;
+  line.textContent = selected
+    ? t("areas_status_active")
+        .replace("{selected}", selected)
+        .replace("{total}", status.areas.total)
+        .replace("{regions}", status.query_regions)
+    : t("areas_status_none");
+}
+
+// Selection changes can fail server-side (409 while a poll cycle or boundary
+// sync holds the job lock, 400 when the region cap is exceeded). Surface the
+// translated detail instead of dying as an unhandled rejection with the UI
+// silently unchanged.
+async function saveSelection(payload) {
+  areaFeedback("");
+  try {
+    await api("/api/areas/selection", { method: "POST", body: JSON.stringify(payload) });
+    return true;
+  } catch (error) {
+    areaFeedback(t("areas_selection_failed").replace("{error}", error.message));
+    return false;
+  }
+}
+
 async function loadAreas() {
   const params = new URLSearchParams({ ...appState.areaFilter, limit: "500" });
-  const result = await api(`/api/areas?${params}`);
+  const [result, status] = await Promise.all([
+    api(`/api/areas?${params}`),
+    api("/api/status"),
+  ]);
   appState.areas = result.items;
+  renderAreaStatus(status);
   $("#area-summary").textContent = `${result.total} ${t("areas_matching")}`;
   $("#areas-body").innerHTML = result.items.length
     ? result.items
@@ -678,27 +736,19 @@ async function loadAreas() {
     : `<tr><td colspan="6" class="muted">${t("areas_no_data")}</td></tr>`;
   $$(".area-checkbox").forEach((checkbox) => {
     checkbox.addEventListener("change", async () => {
-      await api("/api/areas/selection", {
-        method: "POST",
-        body: JSON.stringify({ ids: [checkbox.dataset.id], selected: checkbox.checked }),
-      });
-      await loadStatus();
+      const saved = await saveSelection({ ids: [checkbox.dataset.id], selected: checkbox.checked });
+      if (!saved) {
+        checkbox.checked = !checkbox.checked; // server rejected: restore what the DB still holds
+        return;
+      }
+      await Promise.all([loadAreas(), loadStatus()]);
     });
   });
 }
 
-async function bulkVisible(selected) {
-  const ids = $$(".area-checkbox").map((box) => box.dataset.id);
-  if (!ids.length) return;
-  await api("/api/areas/selection", { method: "POST", body: JSON.stringify({ ids, selected }) });
-  await Promise.all([loadAreas(), loadStatus()]);
-}
-
 async function bulkFiltered(selected) {
-  await api("/api/areas/selection", {
-    method: "POST",
-    body: JSON.stringify({ ...appState.areaFilter, selected }),
-  });
+  const saved = await saveSelection({ ...appState.areaFilter, selected });
+  if (!saved) return;
   await Promise.all([loadAreas(), loadStatus()]);
 }
 
@@ -971,9 +1021,8 @@ $("#area-filter").addEventListener("click", () => {
   appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
   loadAreas();
 });
-$("#select-visible").addEventListener("click", () => bulkVisible(true));
-$("#deselect-visible").addEventListener("click", () => bulkVisible(false));
 $("#select-all-filtered").addEventListener("click", () => bulkFiltered(true));
+$("#deselect-all-filtered").addEventListener("click", () => bulkFiltered(false));
 $("#review-refresh").addEventListener("click", loadReviews);
 $("#settings-core").addEventListener("submit", (event) => {
   event.preventDefault();

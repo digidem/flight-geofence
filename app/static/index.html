@@ -66,7 +66,8 @@
           <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="areas_subtitle">Dados oficiais FUNAI + CNUC</p><h2 data-i18n="areas_title">Selecionar áreas monitoradas</h2></div>
             <div class="filters"><input id="area-search" data-i18n="areas_search" placeholder="Buscar nome, estado ou fase"><select id="area-category"><option value="" data-i18n="areas_all_types">Todos os tipos</option><option value="indigenous_territory" data-i18n="areas_indigenous">Territórios indígenas</option><option value="conservation_unit" data-i18n="areas_conservation">Unidades de conservação</option></select><select id="area-selected"><option value="" data-i18n="areas_all">Todos</option><option value="true" data-i18n="areas_selected">Selecionados</option><option value="false" data-i18n="areas_not_selected">Não selecionados</option></select><button id="area-filter" class="button secondary" data-i18n="areas_filter">Filtrar</button></div>
           </div>
-          <div class="bulk"><button id="select-visible" class="button primary" data-i18n="areas_select_visible">Selecionar visíveis</button><button id="deselect-visible" class="button ghost dark" data-i18n="areas_deselect_visible">Desselecionar visíveis</button><button id="select-all-filtered" class="button secondary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
+          <div class="phase-grid" style="padding-bottom:0"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" hidden></p></div>
+          <div class="bulk"><button id="select-all-filtered" class="button primary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><button id="deselect-all-filtered" class="button ghost dark" data-i18n="areas_deselect_filtered">Desselecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
           <div class="table-wrap"><table><thead><tr><th data-i18n="col_monitor">Monitorar</th><th data-i18n="col_name">Nome</th><th data-i18n="col_type">Tipo</th><th data-i18n="col_state">Estado</th><th data-i18n="col_phase_category">Fase/Categoria</th><th data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
         </article>
       </section>
@@ -143,6 +144,8 @@
           </form>
           <div id="fr24-blockers"></div>
           <div id="fr24-status" class="metric-grid"></div>
+          <p class="eyebrow" data-i18n="fr24_retention_title">Retenção de dados</p>
+          <div id="fr24-retention" class="metric-grid"></div>
           <div id="fr24-overlap-warning" class="error"></div>
         </article>
         <article class="panel">

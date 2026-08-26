@@ -56,7 +56,12 @@ class EnvSettings(BaseSettings):
     boundary_sync_check_hours: int = 6
     target_states: str = "PA,AM,AP,RR"
     neighbor_distance_km: float = 10
-    auto_select_all_on_first_sync: bool = True
+    # Fresh installs start with nothing monitored: the operator picks areas
+    # in the UI. Auto-selecting every synced area silently generated hundreds
+    # of coverage regions (and FR24 spend once clusters exist) before anyone
+    # chose what to watch. Set AUTO_SELECT_ALL_ON_FIRST_SYNC=true to restore
+    # the old behavior.
+    auto_select_all_on_first_sync: bool = False
     auto_select_new_areas_when_all_selected: bool = True
     funai_wfs_url: str = "https://geoserver.funai.gov.br/geoserver/Funai/ows"
     funai_wfs_typename: str = "Funai:tis_poligonais"

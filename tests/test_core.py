@@ -337,6 +337,54 @@ def test_invalid_selection_change_is_rolled_back(monkeypatch):
     assert selected_area_ids() == before
 
 
+def test_bulk_deselect_all_clears_selection_and_regions():
+    from app.database import replace_areas, selected_area_ids
+    from app.main import app
+
+    first = selected_area_record()
+    second = dict(first)
+    second["id"] = "funai:test-2"
+    second["external_id"] = "test-2"
+    second["name"] = "Second Test Territory"
+    replace_areas([first, second], True)
+    assert len(selected_area_ids()) == 2
+
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/auth/login",
+            json={"password": "correct-horse-battery-staple"},
+        )
+        csrf = login.json()["csrf_token"]
+        response = client.post(
+            "/api/areas/selection",
+            headers={"X-CSRF-Token": csrf},
+            json={"selected": False},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["changed"] == 2
+        assert body["query_regions"] == 0
+        assert body["counts"]["selected"] == 0
+    assert selected_area_ids() == []
+
+
+def test_first_sync_defaults_to_nothing_selected():
+    from app.config import env_settings
+    from app.database import replace_areas, selected_area_ids
+
+    assert env_settings().auto_select_all_on_first_sync is False
+
+    replace_areas([selected_area_record()], False)
+    assert selected_area_ids() == []
+
+    # Opt-in still selects everything on a genuine first sync (empty table).
+    from app.database import db
+    with db() as conn:
+        conn.execute("DELETE FROM areas")
+    replace_areas([selected_area_record()], True)
+    assert len(selected_area_ids()) == 1
+
+
 def test_boundary_record_builder_filters_states_and_neighboring_units():
     import geopandas as gpd
 
