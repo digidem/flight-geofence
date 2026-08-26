@@ -16,16 +16,6 @@ const fallbackTranslations = {
   },
 };
 
-// Timezone offsets
-const timezoneOffsets = {
-  "UTC": 0,
-  "America/Sao_Paulo": -3,
-  "America/Manaus": -4,
-  "America/Belem": -3,
-  "America/Rio_Branco": -5,
-  "America/Noronha": -2,
-};
-
 const appState = {
   csrfToken: null,
   settings: null,
@@ -107,30 +97,29 @@ function showApp() {
   $("#app").hidden = false;
 }
 
+// Render timestamps in the operator's chosen timezone (settings "Fuso
+// horário"). Intl resolves the zone, so this stays correct even when the
+// browser's own clock zone differs from the selected one.
 function formatTime(value) {
   if (!value) return "—";
   try {
     const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return value;
     const lang = appState.language || "en";
-    const offset = timezoneOffsets[appState.timezone] || 0;
-
-    const utcMs = dt.getTime() + dt.getTimezoneOffset() * 60000;
-    const localMs = utcMs + offset * 3600000;
-    const localDate = new Date(localMs);
-
-    const dayNames = lang === "pt"
-      ? ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"]
-      : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-    const dayName = dayNames[localDate.getUTCDay()];
-    const day = String(localDate.getUTCDate()).padStart(2, "0");
-    const month = String(localDate.getUTCMonth() + 1).padStart(2, "0");
-    const year = localDate.getUTCFullYear();
-    const hours = String(localDate.getUTCHours()).padStart(2, "0");
-    const mins = String(localDate.getUTCMinutes()).padStart(2, "0");
-
-    const separator = t("time_at");
-    return `${dayName} ${day}/${month}/${year}${separator}${hours}:${mins}`;
+    const locale = lang === "pt" ? "pt-BR" : "en-GB";
+    const parts = new Intl.DateTimeFormat(locale, {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: appState.timezone || "UTC",
+    }).formatToParts(dt);
+    const get = (type) => parts.find((part) => part.type === type)?.value ?? "";
+    const dayName = get("weekday").charAt(0).toUpperCase() + get("weekday").slice(1);
+    return `${dayName} ${get("day")}/${get("month")}/${get("year")}${t("time_at")}${get("hour")}:${get("minute")}`;
   } catch {
     return value;
   }
@@ -205,7 +194,7 @@ function fr24ClusterCard(cluster) {
       <strong>${escapeHtml(cluster.name)}</strong>${cluster.enabled ? "" : ` · <span class="muted">${t("fr24_disabled")}</span>`}
       <p class="muted">${fr24ClusterBoundsText(cluster)}</p>
       ${fr24CoverageMinimap(cluster)}
-      <p class="muted">${t("fr24_cluster_areas")}: ${cluster.area_ids.length} · ${t("fr24_last_poll")}: ${cluster.last_poll_at ? formatTime(cluster.last_poll_at) : "—"} · ${t("fr24_last_credits")}: ${cluster.last_estimated_credits ?? "—"}</p>
+      <p class="muted">${t("fr24_cluster_areas")}: ${cluster.area_ids.length} · ${t("fr24_last_poll")}: ${cluster.last_poll_at ? escapeHtml(formatTime(cluster.last_poll_at)) : "—"} · ${t("fr24_last_credits")}: ${cluster.last_estimated_credits ?? "—"}</p>
       ${errorLine}${missing}
     </div>
     <button class="button ghost dark fr24-edit">${t("fr24_edit")}</button>
@@ -670,7 +659,7 @@ async function loadStatus() {
     metric(t("metric_areas"), status.areas.selected, `${status.areas.total} ${t("metric_downloaded")}`),
     metric(t("metric_regions"), status.query_regions, `${status.estimated_requests_per_day} ${t("metric_estimated")}`),
     metric(t("metric_events"), status.events.total, `${status.events.review.useful || 0} ${t("metric_reviewed")}`),
-    metric(t("metric_last_poll"), status.latest_poll?.success ? t("metric_healthy") : t("metric_not_ready"), status.latest_poll?.completed_at || t("metric_no_poll")),
+    metric(t("metric_last_poll"), status.latest_poll?.success ? t("metric_healthy") : t("metric_not_ready"), status.latest_poll?.completed_at ? formatTime(status.latest_poll.completed_at) : t("metric_no_poll")),
   ].join("");
   const recent = await api("/api/events?limit=20");
   $("#dashboard-events").innerHTML = recent.events.length
@@ -762,7 +751,7 @@ function reviewCard(event) {
     ? (regLinks.length ? `<a href="${regLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.registration)}</a>` : escapeHtml(event.registration))
     : "—";
   return `<article class="review-card" data-id="${escapeHtml(event.id)}">
-    <div><strong>${eventLabel(event.event_type)} · ${hexDisplay}</strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${formatTime(event.occurred_at)}</p></div>
+    <div><strong>${eventLabel(event.event_type)} · ${hexDisplay}</strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${escapeHtml(formatTime(event.occurred_at))}</p></div>
     <label>${t("col_review")}<select class="review-status"><option value="unreviewed">${t("review_unreviewed")}</option><option value="useful">${t("review_useful")}</option><option value="noise">${t("review_noise")}</option><option value="uncertain">${t("review_uncertain")}</option></select></label>
     <label>${t('review_notes')}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save">${t("review_save")}</button>
@@ -819,7 +808,10 @@ async function saveForm(form, override = null) {
     } else {
       resultBox.textContent = t("settings_saved");
     }
-    await Promise.all([loadSettings(), loadStatus()]);
+    // Settings must land before loadStatus renders timestamps: formatTime
+    // reads appState.timezone/language, set only after /api/settings resolves.
+    await loadSettings();
+    await loadStatus();
   } catch (error) {
     resultBox.textContent = error.message;
   }
@@ -927,7 +919,9 @@ async function runAction(button, text, endpoint) {
   try {
     const response = await api(endpoint, { method: "POST" });
     output.textContent = response.error_message || response.error || response.status || t("action_completed");
-    await Promise.all([loadStatus(), loadSettings()]);
+    // Settings first: formatTime in loadStatus needs appState.timezone set.
+    await loadSettings();
+    await loadStatus();
   } catch (error) {
     output.textContent = error.message;
   } finally {
@@ -947,7 +941,9 @@ async function init() {
   if (!auth.authenticated) return showLogin();
   appState.csrfToken = auth.csrf_token;
   showApp();
-  await Promise.all([loadStatus(), loadSettings()]);
+  // Settings first: formatTime in loadStatus needs appState.timezone set.
+  await loadSettings();
+  await loadStatus();
   handleHashRoute();
 }
 
@@ -963,7 +959,9 @@ $("#login-form").addEventListener("submit", async (event) => {
     appState.csrfToken = response.csrf_token;
     $("#login-error").textContent = "";
     showApp();
-    await Promise.all([loadStatus(), loadSettings()]);
+    // Settings first: formatTime in loadStatus needs appState.timezone set.
+    await loadSettings();
+    await loadStatus();
   } catch (error) {
     $("#login-error").textContent = error.message;
   }
