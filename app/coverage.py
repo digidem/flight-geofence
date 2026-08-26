@@ -31,7 +31,11 @@ def regenerate_query_regions() -> list[dict]:
     to_wgs84 = Transformer.from_crs(
         "EPSG:5880", "EPSG:4326", always_xy=True
     ).transform
-    monitored = transform(to_metric, union_wgs84).buffer(
+    # The metric union can carry hundreds of thousands of vertices; buffering
+    # it directly peaked at several GB of RSS on memory-constrained hosts.
+    # Two kilometers of slack is noise next to the kilometer-scale
+    # observation buffer and keeps the buffered envelope small.
+    monitored = transform(to_metric, union_wgs84).simplify(2000).buffer(
         cfg.observation_buffer_km * 1000
     )
 

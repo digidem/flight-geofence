@@ -1068,20 +1068,33 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
   const button = event.target.closest("#event-track-fetch");
   if (!button || button.disabled || button.hidden) return;
   const panel = event.currentTarget;
-  const eventId = panel.dataset.eventId;
-  if (!eventId) return;
+  // Snapshot the event this request belongs to; every completion continuation
+  // below re-checks the panel dataset before touching any DOM, so navigating
+  // mid-flight abandons the stale continuation silently (the in-flight POST
+  // still completes and logs server-side -- correct + audited).
+  const requestedEventId = panel.dataset.eventId;
+  if (!requestedEventId) return;
   if (!window.confirm(t("fr24_track_confirm").replace("{credits}", panel.dataset.credits || ""))) return;
   button.disabled = true;
   const resultBox = $("#event-track-result");
   if (resultBox) resultBox.textContent = t("fr24_track_fetching");
   try {
-    const done = await api(`/api/fr24/events/${encodeURIComponent(eventId)}/track`, {
+    const done = await api(`/api/fr24/events/${encodeURIComponent(requestedEventId)}/track`, {
       method: "POST",
       body: JSON.stringify({ confirm: true }),
     });
-    await loadEventDetail(eventId); // rerender; status flips to already_fetched
-    // B3: flash AFTER the reload so fr24_track_success is actually consumed
-    // and visible next to the now-disabled button.
+    if (panel.dataset.eventId !== requestedEventId) return;
+    // Single source of truth: reload so setupEventTrackPanel re-derives
+    // disabled/blocker/cost from a FRESH GET instead of hand-toggling state.
+    await loadEventDetail(requestedEventId);
+    if (panel.dataset.eventId !== requestedEventId) {
+      // R3: A's late refresh lost the race with navigation -- heal by
+      // re-rendering the event the operator is actually viewing.
+      await loadEventDetail(panel.dataset.eventId);
+      return;
+    }
+    // Flash AFTER the reload so fr24_track_success is actually consumed and
+    // visible next to the freshly-derived (disabled) button.
     const refs = $("#event-track-result");
     if (refs) {
       refs.textContent = t("fr24_track_success")
@@ -1089,11 +1102,22 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
         .replace("{credits}", String(done.estimated_credits ?? ""));
     }
   } catch (error) {
+    if (panel.dataset.eventId !== requestedEventId) return;
     const detail = String(error.message || "");
     let message = TRACK_BLOCKED_KEYS[detail] ? t(TRACK_BLOCKED_KEYS[detail]) : "";
     if (!message && detail.includes("pause_fr24")) message = t("fr24_track_blocked_paused");
+    // FIX A: guard immediately before the terminal refresh as well.
+    if (panel.dataset.eventId !== requestedEventId) return;
+    // FIX B: refresh FIRST so setupEventTrackPanel's clearing cannot erase the
+    // message -- the localized error is written AFTER the reload settles.
+    await loadEventDetail(requestedEventId);
+    if (panel.dataset.eventId !== requestedEventId) {
+      // Same late-refresh heal as the success path.
+      await loadEventDetail(panel.dataset.eventId);
+      return;
+    }
+    // Never hand-enable here: button state above was re-derived from a fresh GET.
     if (resultBox) resultBox.textContent = message || t("fr24_track_error").replace("{detail}", detail);
-    button.disabled = false;
   }
 });
 

@@ -292,7 +292,16 @@ def _records_from_frames(
     )
     ti_phase = _find_column(territories, ["fase_ti", "fase", "etapa", "situacao"])
 
-    territories = territories[_target_state_mask(territories[ti_state], states)].copy()
+    # Filter to target states and prune attribute columns in one step: the
+    # upstream shapefile carries every territory in Brazil plus a wide
+    # attribute table, and the host is memory-constrained.
+    territory_columns = [
+        column for column in (ti_name, ti_id, ti_state, ti_phase) if column
+    ]
+    territories = territories.loc[
+        _target_state_mask(territories[ti_state], states),
+        [*territory_columns, "geometry"],
+    ].copy()
     if territories.empty:
         raise RuntimeError(
             f"No FUNAI territory polygons matched target states: {', '.join(sorted(states))}"
@@ -304,6 +313,7 @@ def _records_from_frames(
     if conservation.empty or conservation.crs is None:
         territories_metric = territories.to_crs("EPSG:5880")
         territories_out = territories_metric.to_crs("EPSG:4326")
+        del territories
         records: list[dict[str, Any]] = []
         funai_sync_date = datetime.now(timezone.utc).date().isoformat()
         for index, row in territories_out.iterrows():
@@ -339,6 +349,7 @@ def _records_from_frames(
 
     territories_metric = territories.to_crs("EPSG:5880")
     conservation_metric = conservation.to_crs("EPSG:5880")
+    del territories, conservation
 
     uc_name = _required_column(
         conservation_metric, ["nome_uc", "nomeuc", "nome", "name"], "CNUC name"
@@ -353,6 +364,13 @@ def _records_from_frames(
     uc_category = _find_column(
         conservation_metric, ["categoria", "categoria_manejo", "cat_manejo"]
     )
+    conservation_columns = [
+        column for column in (uc_name, uc_id, uc_state, uc_status, uc_category)
+        if column
+    ]
+    conservation_metric = conservation_metric[
+        [*conservation_columns, "geometry"]
+    ]
 
     if uc_status:
         status_values = conservation_metric[uc_status].fillna("").astype(str).map(_norm)
@@ -364,13 +382,16 @@ def _records_from_frames(
     neighbor_union = valid_territories.buffer(
         cfg.neighbor_distance_km * 1000
     ).union_all()
+    del valid_territories
     valid_conservation = conservation_metric.geometry.make_valid()
     conservation_metric = conservation_metric[
         valid_conservation.intersects(neighbor_union)
     ].copy()
+    del valid_conservation, neighbor_union
 
     territories_out = territories_metric.to_crs("EPSG:4326")
     conservation_out = conservation_metric.to_crs("EPSG:4326")
+    del territories_metric, conservation_metric
     records: list[dict[str, Any]] = []
     funai_sync_date = datetime.now(timezone.utc).date().isoformat()
 
@@ -401,6 +422,7 @@ def _records_from_frames(
             }
         )
 
+    del territories_out
     for index, row in conservation_out.iterrows():
         geometry = _polygonal(row.geometry)
         if geometry.is_empty or geometry.geom_type not in {"Polygon", "MultiPolygon"}:
@@ -708,7 +730,14 @@ def _sync_boundaries_locked() -> dict[str, Any]:
                     logger.warning("No conservation unit data available; sync will include only indigenous territories")
                     conservation_gdf = gpd.GeoDataFrame(columns=["geometry"], geometry="geometry")
 
-                records = _records_from_frames(territories, conservation_gdf, cnuc_meta)
+                # Hold the upstream frames only inside the call: the record
+                # builder rebinds them to filtered, pruned views right away,
+                # which releases the full-resolution originals before the
+                # reprojected copies pile up.
+                frames = [conservation_gdf, territories]
+                conservation_gdf = None
+                territories = None
+                records = _records_from_frames(frames.pop(), frames.pop(), cnuc_meta)
             territory_count = sum(
                 record["category"] == "indigenous_territory" for record in records
             )
