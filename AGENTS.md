@@ -45,6 +45,10 @@ docker build --pull -t flight-geofence-alerts:local .
 - Add configurable UI settings through `SETTING_DEFS`; environment values must continue to override and lock interface values.
 - Keep official boundary downloads out of the repository. Preserve weekly FUNAI/CNUC discovery, validation, safe extraction, and rollback behavior.
 - Keep frontend changes dependency-free unless a new production dependency is explicitly approved.
+- Render timestamps with `Intl.DateTimeFormat` and the `timezone` setting's IANA name; never hand-roll offset math. Adding the browser's `getTimezoneOffset()` to the selected zone double-counts on non-UTC clients, and headless/test browsers usually run UTC, hiding the bug (shipped as v0.5.4 fix).
+- Await `loadSettings()` before any render that formats times or translates text: `appState.language`/`appState.timezone` only exist once `/api/settings` resolves, and the default `America/Sao_Paulo` otherwise leaks into the first paint.
+- Every interpolation into an `innerHTML` template goes through `escapeHtml`, including helper outputs like `formatTime` that can fall through to raw input on parse failure.
+- State-changing UI actions (selection, settings, toggles) must surface failure: catch the fetch, show a translated error, revert the control. A POST that dies as an unhandled rejection leaves the UI silently out of sync with the server — the whole v0.5.3 areas-selection bug class.
 
 ## Detection invariants
 
@@ -73,6 +77,14 @@ docker build --pull -t flight-geofence-alerts:local .
 - Detection changes need state-transition, deduplication, outage, and phase/email coverage.
 - Boundary changes need state filtering, neighboring-area selection, geometry validity, stable IDs, and partial-download safeguards.
 - Configuration or security changes need environment-precedence, redaction, authentication, and CSRF coverage.
+- Frontend changes: run the VM tests (`node tests/test_*_vm.mjs`) after `node --check`, and reproduce timezone-dependent formatting under a non-UTC `TZ` (e.g. `TZ=America/Sao_Paulo node …`) before trusting it.
+
+## Release
+
+1. Land the fix on `main` first. The release commit must contain only version files.
+2. `make bump-version` seds `app/main.py`, so stash unrelated WIP touching it first (`git stash push app/main.py tests/…`) and pop after committing the bump.
+3. `make bump-version VERSION=X.Y.Z`, then stage **only** the six version files (`Dockerfile`, `app/main.py`, `LINKS_REPORT.txt`, `README.md`, `docs/VALIDATION.md`, `docs/AUDIT.md`). Never `git add -A` — untracked lane/operator WIP otherwise rides into the release tag unnoticed.
+4. Push, then `gh workflow run release.yml --ref main -f version=vX.Y.Z`; the `v` prefix is regex-validated, a bare `X.Y.Z` fails the workflow.
 
 ## Change checklist
 
