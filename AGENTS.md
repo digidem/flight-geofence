@@ -17,7 +17,11 @@ cp .env.example .env && docker compose config --quiet
 ```
 
 `make dev` overrides `DATABASE_PATH` and `DOWNLOAD_DIR` to local `./data/`
-paths (the `.env` defaults assume Docker volume mounts at `/data`).
+paths (the `.env` defaults assume Docker volume mounts at `/data`). `conftest.py` uses
+`os.environ.setdefault(...)` for those paths, so an *exported* `DATABASE_PATH=/data/...`
+inherited from a hub/docker shell silently breaks local runs — scrub it:
+`env -u DATABASE_PATH -u DOWNLOAD_DIR -u FLIGHTRADAR24_API_KEY -u FR24_RETENTION_DAYS make check`
+and pin `DATABASE_PATH=data/runtime/flight_alerts.db DOWNLOAD_DIR=data/downloads` when starting `make dev` from a hub.
 
 Run a focused test with:
 
@@ -36,6 +40,7 @@ docker build --pull -t flight-geofence-alerts:local .
 - Use Python 3.12 and keep lines within the repository's 100-character target where practical.
 - Keep HTTP/provider logic asynchronous and provider-specific parsing under `app/providers/`.
 - Normalize every provider response to `AircraftObservation`; keep provider details out of detection logic.
+- After any user-visible FR24 change (budget policy, manual Tracks flow, enrichment retries, legacy-provider warning, retention windows, CAS), sweep all four doc surfaces together in one commit: `README.md` + `docs/SPEC.md` + `.env.example` + `FLIGHTRADAR_API.md` (`TASK.md` stays historical and is intentionally not swept).
 - Access SQLite through `app/database.py`. Schema changes must be additive and compatible with existing persistent volumes.
 - Add configurable UI settings through `SETTING_DEFS`; environment values must continue to override and lock interface values.
 - Keep official boundary downloads out of the repository. Preserve weekly FUNAI/CNUC discovery, validation, safe extraction, and rollback behavior.
@@ -75,7 +80,7 @@ Before finishing:
 
 1. Run the smallest relevant test while iterating, then `make check`.
 2. Run the JavaScript syntax check after frontend changes.
-3. `uv run ruff check app tests` has a large pre-existing baseline (unrelated legacy findings). To prove a change adds zero new ones: `git stash -u` (or `git stash push -u -- <files>` if unrelated changes are also in the tree), run ruff, note the count, `git stash pop`, run ruff again, compare counts.
+3. `uv run ruff check app tests` has a large pre-existing baseline (48 with all lanes' test files; 46 at `3d6b9fe`). To prove zero net-new prefer a worktree so concurrent lanes/operator WIP don't collide: `git worktree add /tmp/base HEAD --detach` and compare `uvx ruff check --output-format=concise app tests | grep -c ':'` on both trees (`git stash -u` collides with `intent-to-add` files). `make bump-version` touches `Dockerfile` `APP_VERSION` and busts the `uv` layer cache → next `docker compose up --build` is cold (~12 min); sweep `rm -f .coverage` before `git status`; leave the `healthy` container running (don't `compose down` at lane boundaries).
 4. Validate Compose and build the image after infra or dependency changes.
-5. Update `README.md`, `.env.example`, `docs/SPEC.md`, or `docs/RESEARCH.md` when their documented behavior changes.
+5. Update `README.md`, `.env.example`, `docs/SPEC.md`, or `docs/RESEARCH.md` — and after any user-visible FR24 change also `FLIGHTRADAR_API.md` — when their documented behavior changes; sweep the four surfaces together in one commit.
 6. Report any check that could not run; do not claim live upstream or email validation without evidence.
