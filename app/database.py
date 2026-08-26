@@ -328,6 +328,14 @@ def init_db() -> None:
         # fr24_auto_delete_enabled and its docstring above `_run_coverage_
         # cycle_locked`'s cleanup_provider_events call in main.py).
         _ensure_column(conn, "events", "fr24_received_at TEXT")
+        # Enrichment retry accounting for bounded Summary Full backoff (see
+        # _enrich_new_candidates): attempts counts scheduled logical calls
+        # for the episode; next_retry_at schedules the next try in poll-cycle
+        # units. Legacy rows backfill to attempts=0 / next_retry_at=NULL,
+        # i.e. previously-failed episodes become immediately retry-eligible
+        # once, while ok/empty rows stay terminal.
+        _ensure_column(conn, "fr24_enrichment", "attempts INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "fr24_enrichment", "next_retry_at TEXT")
 
 
 def database_ok() -> bool:
@@ -723,11 +731,34 @@ def update_fr24_cluster_telemetry(
         )
 
 
-def get_fr24_enrichment(aircraft_hex: str, episode_id: str) -> dict[str, Any] | None:
+def get_fr24_enrichment(
+    aircraft_hex: str,
+    episode_id: str,
+    *,
+    max_attempts: int = 3,
+    eligible_at: str | None = None,
+) -> dict[str, Any] | None:
+    """Row for one (aircraft_hex, episode_id) plus a SQL-computed
+    retry_eligible flag: true ONLY for failed rows below the attempt bound
+    whose next_retry_at is absent, unparseable, or due at eligible_at
+    (None = evaluate against current UTC time inside SQLite). datetime()
+    returning NULL classifies malformed stored values as eligible-now so a
+    corrupted gate can never strand an episode forever."""
     with db() as conn:
         row = conn.execute(
-            "SELECT * FROM fr24_enrichment WHERE aircraft_hex=? AND episode_id=?",
-            (aircraft_hex, episode_id),
+            """
+            SELECT *,
+                CASE WHEN status='failed'
+                      AND attempts < ?
+                      AND (
+                          next_retry_at IS NULL
+                          OR datetime(next_retry_at) IS NULL
+                          OR datetime(next_retry_at) <= COALESCE(datetime(?), datetime('now'))
+                      )
+                     THEN 1 ELSE 0 END AS retry_eligible
+            FROM fr24_enrichment WHERE aircraft_hex=? AND episode_id=?
+            """,
+            (max_attempts, eligible_at, aircraft_hex, episode_id),
         ).fetchone()
     return dict(row) if row else None
 
@@ -738,15 +769,25 @@ def save_fr24_enrichment(
     fr24_id: str | None,
     status: str,
     payload: dict[str, Any] | None,
+    *,
+    next_retry_at: str | None = None,
+    max_attempts: int = 3,
 ) -> None:
+    """Record one enrichment attempt. The incremented attempt count is
+    derived from the STORED value inside this single UPSERT statement --
+    never a Python-computed count that could be stale against a concurrent
+    writer -- capped at max_attempts, with next_retry_at forced NULL at the
+    bound. The WHERE clause refuses terminal rows (attempts >= max_attempts)
+    outright, so a late/stale writer cannot resurrect an episode the system
+    has given up on."""
     now = utc_now_iso()
     with db() as conn:
         conn.execute(
             """
             INSERT INTO fr24_enrichment(
                 aircraft_hex, episode_id, fr24_id, attempted_at, status, source,
-                received_at, payload_json, fr24_received_at
-            ) VALUES(?,?,?,?,?,?,?,?,?)
+                received_at, payload_json, fr24_received_at, attempts, next_retry_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,1,?)
             ON CONFLICT(aircraft_hex, episode_id) DO UPDATE SET
                 fr24_id=excluded.fr24_id,
                 attempted_at=excluded.attempted_at,
@@ -754,7 +795,13 @@ def save_fr24_enrichment(
                 source=excluded.source,
                 received_at=excluded.received_at,
                 payload_json=excluded.payload_json,
-                fr24_received_at=excluded.fr24_received_at
+                fr24_received_at=excluded.fr24_received_at,
+                attempts=MIN(fr24_enrichment.attempts + 1, ?),
+                next_retry_at=CASE
+                    WHEN fr24_enrichment.attempts + 1 >= ? THEN NULL
+                    ELSE excluded.next_retry_at
+                END
+            WHERE fr24_enrichment.attempts < ?
             """,
             (
                 aircraft_hex,
@@ -766,6 +813,10 @@ def save_fr24_enrichment(
                 now if payload else None,
                 json.dumps(payload) if payload else None,
                 now,
+                next_retry_at,
+                max_attempts,
+                max_attempts,
+                max_attempts,
             ),
         )
 

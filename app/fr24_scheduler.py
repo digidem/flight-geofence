@@ -102,7 +102,11 @@ async def _enrich_new_candidates(
     observations: dict[str, AircraftObservation],
     billing_cycle_id: str,
 ) -> None:
+    max_attempts = 3
+    now = datetime.now(UTC)
+    cycle_seconds = int(get_setting("fr24_poll_interval_seconds"))
     candidates: list[tuple[str, str, str]] = []  # (hex, episode_id, fr24_id)
+    attempts_before: dict[tuple[str, str], int] = {}
     for obs in observations.values():
         if not obs.fr24_id:
             continue
@@ -112,28 +116,77 @@ async def _enrich_new_candidates(
         if state.get("area_ids_json", "[]") == "[]":
             continue  # not currently inside a protected area -- not a candidate
         episode_id = state["episode_id"]
-        if get_fr24_enrichment(obs.hex, episode_id):
-            continue  # already attempted this episode
+        existing = get_fr24_enrichment(
+            obs.hex, episode_id, max_attempts=max_attempts, eligible_at=now.isoformat()
+        )
+        if existing is not None:
+            # Bounded-retry gate. SQL computed retry_eligible; Python
+            # independently repeats the status/bound/due checks so the
+            # decision never rests on one layer alone.
+            if not existing.get("retry_eligible"):
+                continue  # ok/empty terminal, awaiting backoff, or exhausted
+            if existing.get("status") != "failed":
+                continue
+            attempts = int(existing.get("attempts") or 0)
+            if attempts >= max_attempts:
+                continue
+            stored_retry_at = existing.get("next_retry_at")
+            if stored_retry_at is not None:  # NULL is legit unscheduled; '' or garbage is malformed
+                try:
+                    retry_due = datetime.fromisoformat(stored_retry_at)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "fr24.enrichment.retry_gate.unparseable aircraft_hex=%s "
+                        "episode_id=%s stored=%r attempts=%s -- treating as eligible now",
+                        obs.hex,
+                        episode_id,
+                        stored_retry_at,
+                        attempts,
+                    )
+                else:
+                    if retry_due.tzinfo is None:
+                        retry_due = retry_due.replace(tzinfo=UTC)
+                    if retry_due > now:
+                        continue  # backoff not yet elapsed -- skip this cycle
+            attempts_before[(obs.hex, episode_id)] = attempts
         candidates.append((obs.hex, episode_id, obs.fr24_id))
 
     if not candidates:
         return
+
+    def _schedule(attempt_no: int) -> str | None:
+        # Binding cadence: 1st failure retries next cycle, 2nd failure two
+        # cycles out, 3rd gives up (terminal NULL scheduling).
+        if attempt_no >= max_attempts:
+            return None
+        return (now + timedelta(seconds=cycle_seconds * attempt_no)).isoformat()
+
     fr24_ids = [c[2] for c in candidates]
     try:
         summaries = await fetch_summary_full(client, fr24_ids, billing_cycle_id=billing_cycle_id)
     except FR24Failure as exc:
         # Enrichment failure must never block detection -- it already ran
-        # before this call. Mark this episode's attempt as failed (rather
-        # than leaving no row at all) so it isn't retried unbounded every
-        # single cycle for the life of the episode.
+        # before this call. Record THIS attempt as failed with bounded
+        # backoff instead of leaving no row (unbounded per-cycle retries)
+        # or a permanent mark (enrichment lost for the episode's life).
         logger.warning("fr24.enrichment.failed error=%s", exc)
         for aircraft_hex, episode_id, fr24_id in candidates:
+            attempt_no = attempts_before.get((aircraft_hex, episode_id), 0) + 1
             save_fr24_enrichment(
                 aircraft_hex=aircraft_hex,
                 episode_id=episode_id,
                 fr24_id=fr24_id,
                 status="failed",
                 payload=None,
+                next_retry_at=_schedule(attempt_no),
+                max_attempts=max_attempts,
+            )
+            logger.warning(
+                "fr24.enrichment.attempt_failed aircraft_hex=%s episode_id=%s attempt=%d/%d",
+                aircraft_hex,
+                episode_id,
+                attempt_no,
+                max_attempts,
             )
         return
     summary_by_fr24_id = {
@@ -147,9 +200,16 @@ async def _enrich_new_candidates(
             fr24_id=fr24_id,
             status="ok" if payload else "empty",
             payload=payload,
+            next_retry_at=None,
+            max_attempts=max_attempts,
         )
+        attempt_no = attempts_before.get((aircraft_hex, episode_id), 0) + 1
         logger.info(
-            "fr24.enrichment.completed aircraft_hex=%s outcome=%s", aircraft_hex, "ok" if payload else "empty"
+            "fr24.enrichment.completed aircraft_hex=%s outcome=%s attempt=%d/%d",
+            aircraft_hex,
+            "ok" if payload else "empty",
+            attempt_no,
+            max_attempts,
         )
 
 

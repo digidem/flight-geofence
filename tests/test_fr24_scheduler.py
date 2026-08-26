@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -7,16 +9,21 @@ import pytest
 from shapely.geometry import Polygon, mapping
 
 import app.fr24_scheduler as fr24_scheduler_mod
+from app.config import env_settings
 from app.database import (
+    db,
     get_fr24_enrichment,
     get_state,
+    init_db,
     record_fr24_request,
     replace_areas,
     save_fr24_cluster,
+    save_fr24_enrichment,
     upsert_state,
 )
 from app.fr24_credits import billing_cycle_id
 from app.fr24_scheduler import fr24_lock, run_fr24_cycle
+from app.providers.fr24 import FR24Failure
 from app.settings_store import set_setting
 
 
@@ -359,9 +366,16 @@ def test_candidate_enrichment_once_per_episode(mock_fr24_transport):
     assert state.get("episode_id")
     enrichment = get_fr24_enrichment("abc123", state["episode_id"])
     assert enrichment is not None
+    assert enrichment["status"] == "ok"
+    assert enrichment["attempts"] == 1  # first logical Summary Full attempt
+    assert enrichment["next_retry_at"] is None  # success clears scheduling
 
     asyncio.run(run_fr24_cycle())
     assert len(summary_calls) == 1
+    # Second cycle changes nothing about the stored outcome.
+    enrichment_after = get_fr24_enrichment("abc123", state["episode_id"])
+    assert enrichment_after["payload_json"] == enrichment["payload_json"]
+    assert enrichment_after["attempts"] == 1
 
 
 # --- Enrichment failure does not block detection ---
@@ -373,8 +387,13 @@ def test_enrichment_failure_does_not_block_detection(mock_fr24_transport):
     replace_areas([_selected_area_record()], auto_select_all=True)
     save_fr24_cluster(_enabled_cluster("c1"))
 
+    state_snapshots = {}
+
     def handler(request):
         if "/flight-summary/full" in str(request.url):
+            # Detection has already run by the time enrichment fires --
+            # snap the observation state exactly here.
+            state_snapshots["pre_failure"] = get_state("abc123")
             return httpx.Response(500, content=b"Internal Server Error")
         return _json_response({"data": [_valid_raw(lat=-1.0, lon=-55.0)]})
 
@@ -382,6 +401,280 @@ def test_enrichment_failure_does_not_block_detection(mock_fr24_transport):
     result = asyncio.run(run_fr24_cycle())
     assert result["success"] == 1
     assert result["events_created"] >= 0
+    # Enrichment failure must NEVER alter detection's output: post-cycle
+    # observation state equals the pre-enrichment snapshot exactly.
+    assert get_state("abc123") == state_snapshots["pre_failure"]
+
+
+# --- Enrichment bounded retry: attempt 1 fail -> +1 cycle, 2 -> +2 cycles, 3 -> give up ---
+
+
+def _enrichment_scenario(mock_fr24_transport):
+    """Shared offline setup: one selected area, one enabled cluster, one
+    observed FR24 aircraft inside it. Light polling flows through
+    MockTransport; fetch_summary_full is monkeypatched per-test so LOGICAL
+    Summary Full attempts can be counted without involving the provider's
+    internal HTTP retry loop."""
+    _enable_fr24()
+    set_setting("fr24_fetch_summary_on_entry", True)
+    replace_areas([_selected_area_record()], auto_select_all=True)
+    save_fr24_cluster(_enabled_cluster("c1"))
+
+    def light_only_handler(request):
+        if "/flight-summary/full" in str(request.url):
+            raise AssertionError(
+                "monkeypatched fetch_summary_full must prevent real Summary Full HTTP"
+            )
+        return _json_response({"data": [_valid_raw(lat=-1.0, lon=-55.0)]})
+
+    mock_fr24_transport(light_only_handler)
+
+
+def _episode_row():
+    state = get_state("abc123")
+    assert state is not None and state.get("episode_id")
+    return get_fr24_enrichment("abc123", state["episode_id"])
+
+
+def _open_retry_gate(episode_id):
+    """Simulate elapsed poll cycles: pull the scheduled retry into the past
+    so the next cycle's eligibility gate opens deterministically."""
+    with db() as conn:
+        conn.execute(
+            "UPDATE fr24_enrichment SET next_retry_at=datetime('now','-1 day') "
+            "WHERE aircraft_hex='abc123' AND episode_id=?",
+            (episode_id,),
+        )
+
+
+def test_enrichment_failure_schedules_retry_within_bound(mock_fr24_transport, monkeypatch, caplog):
+    _enrichment_scenario(mock_fr24_transport)
+    summary_calls = []
+
+    async def failing_summary(client, fr24_ids, *, billing_cycle_id):
+        summary_calls.append(list(fr24_ids))
+        raise FR24Failure("simulated transient summary failure")
+
+    monkeypatch.setattr(fr24_scheduler_mod, "fetch_summary_full", failing_summary)
+
+    started_at = datetime.now(UTC)
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(run_fr24_cycle())
+
+    assert len(summary_calls) == 1
+    row = _episode_row()
+    assert row["status"] == "failed"
+    assert row["attempts"] == 1
+    # Attempt-1 failure schedules the retry roughly one configured 300 s
+    # cycle later (fr24_poll_interval_seconds, set by _enable_fr24).
+    stored_retry = datetime.fromisoformat(row["next_retry_at"])
+    earliest = started_at + timedelta(seconds=300 - 20)
+    latest = datetime.now(UTC) + timedelta(seconds=300 + 20)
+    assert earliest <= stored_retry <= latest
+    assert "attempt=1/3" in caplog.text
+
+
+def test_enrichment_retry_success_on_second_attempt(mock_fr24_transport, monkeypatch):
+    _enrichment_scenario(mock_fr24_transport)
+    summary_calls = []
+
+    async def fail_then_succeed(client, fr24_ids, *, billing_cycle_id):
+        summary_calls.append(list(fr24_ids))
+        if len(summary_calls) == 1:
+            raise FR24Failure("simulated transient summary failure")
+        return [{"fr24_id": fr24_id, "registration": "PR-OIX"} for fr24_id in fr24_ids]
+
+    monkeypatch.setattr(fr24_scheduler_mod, "fetch_summary_full", fail_then_succeed)
+
+    asyncio.run(run_fr24_cycle())  # first logical attempt fails
+    episode_id = get_state("abc123")["episode_id"]
+    row = get_fr24_enrichment("abc123", episode_id)
+    assert row["status"] == "failed"
+    assert row["attempts"] == 1
+
+    _open_retry_gate(episode_id)
+    asyncio.run(run_fr24_cycle())  # second logical attempt succeeds
+
+    assert len(summary_calls) == 2
+    row = get_fr24_enrichment("abc123", episode_id)
+    assert row["status"] == "ok"
+    assert row["attempts"] == 2
+    assert json.loads(row["payload_json"]) == {
+        "fr24_id": "fr24-abc",
+        "registration": "PR-OIX",
+    }
+    assert row["next_retry_at"] is None
+
+
+def test_enrichment_terminal_after_max_attempts(mock_fr24_transport, monkeypatch):
+    _enrichment_scenario(mock_fr24_transport)
+    summary_calls = []
+
+    async def always_failing(client, fr24_ids, *, billing_cycle_id):
+        summary_calls.append(list(fr24_ids))
+        raise FR24Failure("simulated persistent summary failure")
+
+    monkeypatch.setattr(fr24_scheduler_mod, "fetch_summary_full", always_failing)
+
+    for round_no in range(3):
+        asyncio.run(run_fr24_cycle())
+        if round_no < 2:
+            # Backdate BETWEEN failures to open the scheduled gate; after
+            # the third failure the scheduler itself must have written a
+            # terminal NULL, which we assert below.
+            _open_retry_gate(get_state("abc123")["episode_id"])
+
+    episode_id = get_state("abc123")["episode_id"]
+    row = get_fr24_enrichment("abc123", episode_id)
+    assert len(summary_calls) == 3
+    assert row["status"] == "failed"
+    assert row["attempts"] == 3
+    assert row["next_retry_at"] is None
+
+    # A fourth eligible-looking cycle must not spend another call on an
+    # exhausted episode -- the bound is enforced before any HTTP work.
+    asyncio.run(run_fr24_cycle())
+    assert len(summary_calls) == 3
+
+    # A stale/direct save must not resurrect a terminal row: the SQL guard
+    # leaves it exactly as-is.
+    save_fr24_enrichment(
+        aircraft_hex="abc123",
+        episode_id=episode_id,
+        fr24_id="fr24-abc",
+        status="ok",
+        payload={"stale": True},
+    )
+    terminal = get_fr24_enrichment("abc123", episode_id)
+    assert terminal["status"] == "failed"
+    assert terminal["attempts"] == 3
+    assert terminal["payload_json"] is None
+    assert terminal["next_retry_at"] is None
+
+
+def test_legacy_rows_without_columns_backfilled(tmp_path, monkeypatch):
+    legacy_path = tmp_path / "legacy.db"
+    raw = sqlite3.connect(legacy_path)
+    raw.executescript(
+        """
+        CREATE TABLE fr24_enrichment (
+            aircraft_hex TEXT NOT NULL,
+            episode_id TEXT NOT NULL,
+            fr24_id TEXT,
+            attempted_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            source TEXT,
+            received_at TEXT,
+            payload_json TEXT,
+            fr24_received_at TEXT,
+            PRIMARY KEY (aircraft_hex, episode_id)
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO fr24_enrichment(aircraft_hex, episode_id, fr24_id, attempted_at, status) "
+        "VALUES('deadbeef01', 'ep-legacy', 'fr24-old', '2026-01-01T00:00:00+00:00', 'failed')"
+    )
+    raw.commit()
+    raw.close()
+
+    monkeypatch.setenv("DATABASE_PATH", str(legacy_path))
+    env_settings.cache_clear()
+    try:
+        init_db()
+        with db() as conn:
+            columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(fr24_enrichment)")}
+        assert {"attempts", "next_retry_at"} <= columns
+
+        row = get_fr24_enrichment("deadbeef01", "ep-legacy")
+        assert row is not None
+        assert row["attempts"] == 0
+        assert row["next_retry_at"] is None
+        # Legacy failed rows are immediately retry-eligible once -- old
+        # fail-closed semantics preserved through the additive migration.
+        assert row["retry_eligible"]
+    finally:
+        env_settings.cache_clear()
+
+
+def test_retry_respects_next_retry_at_gate(mock_fr24_transport, monkeypatch, caplog):
+    _enrichment_scenario(mock_fr24_transport)
+    summary_calls = []
+
+    async def counting_summary(client, fr24_ids, *, billing_cycle_id):
+        summary_calls.append(list(fr24_ids))
+        return [{"fr24_id": fr24_id} for fr24_id in fr24_ids]
+
+    monkeypatch.setattr(fr24_scheduler_mod, "fetch_summary_full", counting_summary)
+
+    asyncio.run(run_fr24_cycle())  # first logical attempt seeds the row
+    episode_id = get_state("abc123")["episode_id"]
+    assert len(summary_calls) == 1
+
+    # Re-arm the row as a failed attempt scheduled far in the future.
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    with db() as conn:
+        conn.execute(
+            "UPDATE fr24_enrichment SET status='failed', payload_json=NULL, attempts=1, "
+            "next_retry_at=? WHERE aircraft_hex='abc123' AND episode_id=?",
+            (future, episode_id),
+        )
+
+    asyncio.run(run_fr24_cycle())
+    assert len(summary_calls) == 1  # future gate suppresses the retry call
+
+    malformed = "not-a-timestamp"
+    with db() as conn:
+        conn.execute(
+            "UPDATE fr24_enrichment SET next_retry_at=? "
+            "WHERE aircraft_hex='abc123' AND episode_id=?",
+            (malformed, episode_id),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(run_fr24_cycle())
+    assert len(summary_calls) == 2  # unparseable gate -> eligible immediately
+    assert malformed in caplog.text
+    row = get_fr24_enrichment("abc123", episode_id)
+    assert row["attempts"] == 2
+    assert row["status"] == "ok"
+    assert row["next_retry_at"] is None
+
+
+def test_empty_string_retry_timestamp_warns_and_retries(mock_fr24_transport, monkeypatch, caplog):
+    # G-review fix: SQLite classifies '' as malformed (datetime('') IS NULL)
+    # and therefore retry-eligible, so Python must take the SAME
+    # warn-and-retry path instead of silently swallowing the empty value
+    # through a truthiness guard.
+    _enrichment_scenario(mock_fr24_transport)
+    summary_calls = []
+
+    async def counting_summary(client, fr24_ids, *, billing_cycle_id):
+        summary_calls.append(list(fr24_ids))
+        return [{"fr24_id": fr24_id} for fr24_id in fr24_ids]
+
+    monkeypatch.setattr(fr24_scheduler_mod, "fetch_summary_full", counting_summary)
+
+    asyncio.run(run_fr24_cycle())  # first logical attempt seeds the row
+    episode_id = get_state("abc123")["episode_id"]
+    assert len(summary_calls) == 1
+
+    with db() as conn:
+        conn.execute(
+            "UPDATE fr24_enrichment SET status='failed', payload_json=NULL, attempts=1, "
+            "next_retry_at='' WHERE aircraft_hex='abc123' AND episode_id=?",
+            (episode_id,),
+        )
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(run_fr24_cycle())
+
+    assert len(summary_calls) == 2  # empty-string gate -> eligible immediately
+    assert "stored=''" in caplog.text  # warning names the malformed empty value
+    row = get_fr24_enrichment("abc123", episode_id)
+    assert row["attempts"] == 2
+    assert row["status"] == "ok"
+    assert row["next_retry_at"] is None
 
 
 # --- FR24 disabled ---
