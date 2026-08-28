@@ -85,6 +85,31 @@ def test_sandbox_stack_end_to_end(api):
     assert created.status_code == 200, f"cluster save failed: {created.text[:300]}"
     cluster_id = created.json()["id"]
     try:
+        # 3.5. A prior, interrupted scenarios run can leave the operating
+        # budget exhausted (S6 parks it there deliberately and only restores
+        # it on a clean finish), which would fail this suite on leftover
+        # state it never created. Clear the override so the server falls back
+        # to its own default, and deliberately do NOT put the exhausted value
+        # back afterwards: restoring it would just re-break the stack for the
+        # next run and for anyone using the leftover UI.
+        pre_probe = api.get("/api/fr24/status").json()
+        if pre_probe.get("budget_state") != "normal":
+            healed = api.post(
+                "/api/settings",
+                json={"values": {}, "clear": ["fr24_monthly_operating_budget"]},
+            )
+            assert healed.status_code == 200, f"budget heal failed: {healed.text[:300]}"
+            after = api.get("/api/fr24/status").json()
+            print(
+                f"healed leftover budget: {pre_probe.get('budget_state')!r} -> "
+                f"{after.get('budget_state')!r} (budget now {after.get('operating_budget')})"
+            )
+            assert after.get("budget_state") == "normal", (
+                "clearing the budget override did not restore a spendable budget: "
+                f"used={after.get('credits_used_this_cycle')} "
+                f"budget={after.get('operating_budget')}"
+            )
+
         # 4. Manual probe endpoint (same fetch_light path, limit=1).
         probe = api.post("/api/fr24/test")
         assert probe.status_code == 200, f"fr24/test failed: {probe.text[:300]}"

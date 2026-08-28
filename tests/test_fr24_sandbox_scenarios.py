@@ -293,9 +293,30 @@ def test_s0_reset_and_discover(api):
     # Each settings item arrives as {value, source, locked, ...}; store the
     # plain values so the restore POST (here and in fr24_sandbox_restore.py)
     # round-trips directly.
-    SETTINGS_BACKUP.write_text(
-        json.dumps({key: (settings.get(key) or {}).get("value") for key in TOUCHED_SETTINGS})
-    )
+    backup = {key: (settings.get(key) or {}).get("value") for key in TOUCHED_SETTINGS}
+    # A poisoned budget left over from an interrupted prior run (S6 sets
+    # budget=used and only restores it on a clean finish) must not be
+    # captured as "the baseline" here -- S6 would then faithfully restore
+    # the poison and the stack would stay broken forever. Substitute the
+    # SettingDef default (app/settings_store.py) instead; every other
+    # touched setting still snapshots its live value.
+    if guard.get("budget_state") != "normal":
+        # Ask the server for its own default rather than hardcoding one: clear
+        # the override, then read back whatever the SettingDef supplies. Keeps
+        # this suite black-box and immune to the default drifting.
+        cleared = api.post(
+            "/api/settings", json={"values": {}, "clear": ["fr24_monthly_operating_budget"]}
+        )
+        assert cleared.status_code == 200, f"budget heal failed: {cleared.text[:300]}"
+        healed_value = (
+            api.get("/api/settings").json()["settings"]["fr24_monthly_operating_budget"]["value"]
+        )
+        print(
+            f"S0: healing poisoned baseline (budget_state={guard.get('budget_state')!r}) -- "
+            f"backing up the server default {healed_value} instead of the live value"
+        )
+        backup["fr24_monthly_operating_budget"] = healed_value
+    SETTINGS_BACKUP.write_text(json.dumps(backup))
 
     # Baseline settings for the run: altitude gate must admit the fixture's
     # cruise altitude (default 6000 ft); phase "review" creates events with

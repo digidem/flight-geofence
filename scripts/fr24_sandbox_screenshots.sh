@@ -51,9 +51,12 @@ CHROME_PID=""
 cleanup() {
   if [ -n "$CHROME_PID" ]; then
     kill "$CHROME_PID" 2>/dev/null || true
+    # Chrome keeps writing into the profile while it shuts down; removing it
+    # immediately loses the race and leaves the directory behind.
+    wait "$CHROME_PID" 2>/dev/null || true
   fi
   if [ -n "${PROFILE_DIR:-}" ]; then
-    rm -rf "$PROFILE_DIR"
+    rm -rf "$PROFILE_DIR" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
