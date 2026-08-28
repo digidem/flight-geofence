@@ -12,6 +12,7 @@ import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 
+from fastapi.testclient import TestClient
 from shapely.geometry import Polygon, mapping
 
 from app.database import (
@@ -24,6 +25,7 @@ from app.database import (
     replace_areas,
 )
 from app.detection import process_observation
+from app.main import app
 from app.geofences import GeofenceIndex
 from app.providers.base import AircraftObservation
 from app.providers.providers import _endpoint_label
@@ -361,3 +363,88 @@ def test_provider_error_message_never_stores_geometry():
 def test_scrub_handles_empty_message():
     assert _scrub_log_message(None) is None
     assert _scrub_log_message("") is None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/logs
+# ---------------------------------------------------------------------------
+
+
+def _authed_client() -> TestClient:
+    client = TestClient(app)
+    login = client.post("/api/auth/login", json={"password": "correct-horse-battery-staple"})
+    assert login.status_code == 200
+    client.headers.update({"X-CSRF-Token": login.json()["csrf_token"]})
+    return client
+
+
+def test_logs_endpoint_requires_authentication():
+    with TestClient(app) as client:
+        assert client.get("/api/logs").status_code != 200
+
+
+def test_logs_endpoint_returns_the_documented_shape():
+    _seed()
+    with _authed_client() as client:
+        body = client.get("/api/logs?limit=2").json()
+
+    assert set(body) >= {"rows", "total", "limit", "offset", "retention_days"}
+    assert body["total"] == 4
+    assert len(body["rows"]) == 2
+    row = body["rows"][0]
+    assert row["kind"] in {"call", "observation"}
+    # area_names must arrive as a list, not the raw JSON column.
+    assert all(isinstance(r["area_names"], list) for r in body["rows"])
+
+
+def test_logs_endpoint_honours_kind_hex_and_inside_filters():
+    _seed()
+    with _authed_client() as client:
+        assert client.get("/api/logs?kind=call").json()["total"] == 2
+        assert client.get("/api/logs?kind=observation").json()["total"] == 2
+
+        inside = client.get("/api/logs?kind=observation&inside=1").json()
+        assert inside["total"] == 1
+        assert inside["rows"][0]["aircraft_hex"] == "e48fc9"
+
+        by_hex = client.get("/api/logs?hex=AB7558").json()
+        assert by_hex["total"] == 1
+        assert by_hex["rows"][0]["aircraft_hex"] == "ab7558"
+
+
+def test_logs_endpoint_rejects_an_unknown_kind():
+    with _authed_client() as client:
+        assert client.get("/api/logs?kind=bogus").status_code == 400
+
+
+def test_recorders_swallow_a_real_constraint_violation():
+    """aircraft_hex/outcome are NOT NULL. A bad value must be dropped, never
+    raised: losing an audit row must not fail a poll cycle or block detection."""
+    record_observation_log(
+        provider="adsb_lol",
+        region_id="r1",
+        aircraft_hex=None,  # NOT NULL -> insert must fail internally
+        callsign=None,
+        registration=None,
+        aircraft_type=None,
+        latitude=None,
+        longitude=None,
+        altitude_ft=None,
+        ground_speed_kt=None,
+        on_ground=False,
+        observed_at=None,
+        inside=False,
+        area_ids=None,
+        area_names=None,
+        classification=None,
+        disposition="outside_no_episode",
+    )
+    record_provider_call(
+        provider="adsb_lol",
+        region_id="r1",
+        endpoint="v2/point",
+        outcome=None,  # NOT NULL -> insert must fail internally
+    )
+
+    _, total = query_logs()
+    assert total == 0, "bad rows must be dropped, not partially written"
