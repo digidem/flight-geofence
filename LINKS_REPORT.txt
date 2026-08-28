@@ -1,8 +1,8 @@
 ===============================================================================
 FLIGHT GEOFENCE ALERTS - EMAIL LINKS REPORT
 ===============================================================================
-Report Date: 2026-07-24
-Version: 0.6.0
+Report Date: 20.6.17-24
+Version: 0.6.1
 Purpose: Document all clickable links in email alerts for research and improvement
 ===============================================================================
 
@@ -267,7 +267,7 @@ ADS-B.lol:
 6. TESTING NOTES
 -------------------------------------------------------------------------------
 
-All links were tested on 2026-07-24:
+All links were tested on 20.6.17-24:
 - FlightRadar24 links: Working (some aircraft may not have pages)
 - Google Maps coordinate links: Working
 - ANAC link: Working (generic page, not specific aircraft)
