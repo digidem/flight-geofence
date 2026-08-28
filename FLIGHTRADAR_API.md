@@ -619,6 +619,13 @@ Count endpoint:
 GET /api/live/flight-positions/count
 ```
 
+Response shape (verified against the live sandbox): the total lives at
+`data[0].record_count`, not at a top-level `count` key --
+
+```json
+{"data": [{"record_count": 123}]}
+```
+
 Use the same:
 
 ```text
@@ -761,6 +768,16 @@ Current cost:
 ```text
 40 credits per returned flight
 ```
+
+Response shape (verified against the live sandbox): a **bare top-level array**
+of flight objects, not an object with a `data` key --
+
+```json
+[{"fr24_id": "333ca4a2", "tracks": [{"timestamp": "...", "lat": 0, "lon": 0}]}]
+```
+
+so the billed record count is `len(payload)` (flights), while the track-point
+count an operator sees is the sum of each flight's `tracks` length.
 
 Tracks are fetched exclusively through an authenticated manual action on an event — never automatically. Provide an authenticated manual flow:
 
@@ -1306,6 +1323,76 @@ Sandbox tests must:
 * validate current response schemas;
 * consume no production credits;
 * not run as an uncontrolled external dependency in every unit-test execution.
+
+Implemented as:
+
+* `tests/test_fr24_sandbox_contract.py` — every client function
+  (`fetch_light`, `fetch_count`, `fetch_summary_full`, `fetch_track`,
+  `fetch_usage`) called live against the sandbox; request-log rows asserted;
+  invalid-key failure asserted to leave no key trace (messages or logs).
+* `tests/test_fr24_sandbox_system.py` — black-box pass over the sandbox
+  compose stack: admin auth + CSRF, status shows the env-locked sandbox key,
+  manual-bounds cluster over the static fixture coordinates, a real scheduler
+  cycle completing successfully, dashboard render, cleanup.
+* `scripts/fr24_sandbox_smoke.sh` — one command: stack up, tests, key-leak
+  log scan, teardown (`KEEP=1` leaves it up on `127.0.0.1:8081`).
+
+Setup: copy `.env.sandbox.example` to `.env.sandbox`, paste the sandbox key
+(separate key, from Key management at fr24api.flightradar24.com), then run
+`bash scripts/fr24_sandbox_smoke.sh`. The stack (`docker-compose.sandbox.yml`)
+replaces — never merges — the production `env_file`, uses its own project
+name, volume and port 8081, and requires docker compose >= 2.24.
+
+Sandbox-data accommodations (sandbox env only, never production):
+
+* `POSITION_MAX_AGE_SECONDS=70000000` — sandbox payloads carry static
+  2024-10-10 timestamps; the default 150 s freshness gate would silently
+  drop every observation before detection.
+* `STATE_RETENTION_DAYS=36500` — `cleanup_stale_states()` cuts against
+  `utc_now()`; 2024-dated state needs a ~100-year window.
+* `FR24_ENABLED=true` — the kill switch defaults to false.
+
+Sandbox limits (why unit tests remain the behavioral backbone): query
+parameters are ignored — one static row per endpoint, always — so
+bounds/category/altitude filtering, truncation (`possibly_truncated`),
+rate-limit/`Retry-After` paths, pagination and entry/exit dynamics cannot be
+exercised against the sandbox. The sandbox adds transport, auth and schema
+reality on top of that.
+
+### Sandbox event simulation
+
+`tests/test_fr24_sandbox_scenarios.py` (also `fr24_sandbox`-marked, opt-in)
+extends live coverage from transport/schema to the **event pipeline**: one
+sequential session drives real scheduler cycles (`run_fr24_cycle()` via
+`docker compose exec`) through the full lifecycle, discovering the current
+fixture dynamically (it rotates; nothing is hardcoded).
+
+| Scenario | Mechanism (production code only) | Coverage |
+|---|---|---|
+| S0 discovery | world-bounds cluster + 1 cycle, read `aircraft_state` | fixture rotation tolerance, classification split |
+| S1 presence | 2 cycles inside a sim area | episode open, `inside_observations`, no event on stable presence, summary-full enrichment row |
+| S2 `DISAPPEARED` | seed `last_provider='adsb_lol'` + fresh `last_seen_at` — `_free_grid_actively_tracking()` defers the FR24 observation while `process_missing()` advances `missing_cycles` | real disappearance gate, event row, email preview (`review_only`), track fetch + credits |
+| S3 synthetic `PROBABLE_STOP` | direct labeled DB insert (`provider='sandbox-simulation'`, reason prefixed `SANDBOX SIMULATION`) | UI rendering of the second event type only — **no detection-pipeline claim**: the fixture flies ~491 kt, above `stop_max_speed_kt`'s 150 kt hard ceiling, so a real `PROBABLE_STOP` can never fire from sandbox data |
+| S4 close-by-leaving | deselect the control's area | outside observations close the episode with **no** event |
+| S5 budget warning | `fr24_monthly_operating_budget ≈ used/0.75` | cycle still polls, enrichment suppressed, `fr24.budget.warning` logged |
+| S6 exhaustion + pause | budget = used, `pause_fr24` | cycle `skipped=1` with "budget exhausted", no light rows, track endpoint 409 |
+
+Settings touched are snapshotted to `sandbox-artifacts/settings-backup.json`
+in S0 and restored afterwards (`scripts/fr24_sandbox_restore.py`);
+S0 also re-parks the budget high so an interrupted prior session's exhausted
+end-state cannot skip the next run.
+
+`scripts/fr24_sandbox_simulate.sh` wraps it: preflight `/readyz`, the
+scenario suite (with the exhausted end-state left standing), UI screenshots
+via headless Chrome (`scripts/fr24_sandbox_screenshots.sh` — dashboard,
+areas, events, settings, FR24 tab, event details), then restore. Determinism
+tip: set `FR24_POLL_INTERVAL_SECONDS=86400` in `.env.sandbox` and re-create
+the stack first — otherwise the 300 s background loop may interleave
+(harmless; manual cycles retry on the scheduler lock).
+
+Still unit-test-only (not sandbox-simulatable): truncation→Count
+calibration, HTTP/auth failures, kill switch, rate-limit retries — the
+sandbox serves one static success row per endpoint and cannot produce them.
 
 ## Optional production smoke test
 

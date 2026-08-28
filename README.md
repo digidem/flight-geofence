@@ -717,6 +717,58 @@ node --check app/static/app.js
 docker compose config --quiet
 ```
 
+### FR24 sandbox testing (live, zero credits)
+
+Flightradar24's API has a sandbox that returns static, schema-identical
+responses and consumes no subscription credits — used here to verify the
+whole production path (auth headers, every FR24 client function, the real
+scheduler cycle, admin API, dashboard) without touching real usage.
+
+```bash
+cp .env.sandbox.example .env.sandbox
+# paste the SANDBOX key (separate from the production key — Key management
+# at https://fr24api.flightradar24.com/key-management) into .env.sandbox
+bash scripts/fr24_sandbox_smoke.sh
+```
+
+The script starts an isolated compose stack (own project name, volume, and
+port 8081 — the production `.env` is replaced, never merged), runs the
+`fr24_sandbox`-marked tests against it, scans container logs for key leaks,
+and tears everything down (`KEEP=1` leaves it up for manual inspection at
+`http://127.0.0.1:8081`). The tests skip automatically when no sandbox key
+is configured, so the default suite and CI are unaffected. Caveats and the
+two sandbox-only env accommodations live in `FLIGHTRADAR_API.md`
+("Sandbox tests").
+
+### FR24 sandbox event simulation (full lifecycle)
+
+Beyond the smoke pass, `tests/test_fr24_sandbox_scenarios.py` drives the live
+sandbox stack through every event lifecycle the production pipeline can
+produce — discovery, presence/enrichment, a real `DISAPPEARED` through the
+actual detection path, a synthetic labeled `PROBABLE_STOP` (the fixture flies
+above the stop-speed gate, so a real one can never fire), episode close by
+leaving, budget warning, and budget exhaustion + `pause_fr24` skip — then
+captures full-page UI screenshots and restores settings.
+
+```bash
+# stack already up and smoke-green (KEEP=1 above), then:
+bash scripts/fr24_sandbox_simulate.sh
+```
+
+What lands in `sandbox-artifacts/` (gitignored): `settings-backup.json`
+(pre-run snapshot), `0N-*.png` (dashboard, areas, events, settings, FR24 tab,
+event-detail pages), `simulate.log`. The stack stays up afterwards — the
+script prints a UI tour of what to click at `http://127.0.0.1:8081`.
+
+Determinism tip: the background poll loop runs every 300 s regardless
+(`FR24_POLL_INTERVAL_SECONDS` is env-locked in `.env.sandbox`). Manual cycles
+collide with it safely on a lock and are retried, but for a fully quiet stack
+set `FR24_POLL_INTERVAL_SECONDS=86400` in `.env.sandbox` and re-create
+(`docker compose -f docker-compose.yml -f docker-compose.sandbox.yml -p
+flight-geofence-sandbox up -d`) before simulating. Fixture rotation is
+tolerated: the scenarios discover whatever aircraft the sandbox currently
+serves and skip with a clear message if none are event-eligible.
+
 ## Known limitations
 
 - Aircraft that emit no usable signal—or are outside all receiver coverage—cannot be detected.
