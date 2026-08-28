@@ -30,6 +30,7 @@ from .database import (
     area_counts,
     areas_by_ids,
     bulk_area_selection,
+    cleanup_logs,
     cleanup_provider_events,
     cleanup_stale_states,
     credits_used_this_cycle,
@@ -50,6 +51,7 @@ from .database import (
     list_areas,
     list_events,
     list_fr24_clusters,
+    query_logs,
     record_config_audit,
     retryable_email_events,
     review_event,
@@ -258,6 +260,9 @@ async def _run_coverage_cycle_locked() -> dict:
         cfg.state_retention_days,
         exclude_provider=None if fr24_auto_delete else "flightradar24",
     )
+    # Call and observation logs are the operator's audit trail; trim them on the
+    # same cadence so the window stays bounded without a separate job.
+    cleanup_logs(cfg.log_retention_days)
     if fr24_auto_delete:
         cleanup_provider_events("flightradar24", min(cfg.fr24_retention_days, 29))
     # Retry past live notifications even when no coverage regions currently exist,
@@ -811,6 +816,54 @@ async def fr24_cluster_delete_endpoint(request: Request, cluster_id: str):
         "admin",
     )
     return {"deleted": True}
+
+
+@app.get("/api/logs")
+def logs_index(
+    request: Request,
+    limit: int = 100,
+    offset: int = 0,
+    kind: str = "all",
+    provider: str | None = None,
+    hex: str | None = None,
+    inside: int = 0,
+):
+    """Operator audit trail: provider calls and every observation, so a
+    non-finding can be reviewed instead of taken on trust."""
+    require_auth(request)
+    if kind not in {"all", "call", "observation"}:
+        raise HTTPException(status_code=400, detail="kind must be all, call or observation")
+    rows, total = query_logs(
+        limit=limit,
+        offset=offset,
+        kind=kind,
+        provider=(provider or None),
+        aircraft_hex=(hex or None),
+        inside_only=bool(inside),
+    )
+    region_names = {r["id"]: r.get("name") for r in get_query_regions()}
+    cluster_names = {c["id"]: c.get("name") for c in list_fr24_clusters()}
+    items = []
+    for row in rows:
+        region_id = row.get("region_id")
+        items.append(
+            {
+                **row,
+                "on_ground": None if row.get("on_ground") is None else bool(row["on_ground"]),
+                "inside": None if row.get("inside") is None else bool(row["inside"]),
+                "region_name": region_names.get(region_id) or cluster_names.get(region_id),
+                "area_names": json.loads(row.pop("area_names_json") or "[]")
+                if row.get("area_names_json")
+                else [],
+            }
+        )
+    return {
+        "rows": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "retention_days": cfg.log_retention_days,
+    }
 
 
 @app.get("/api/fr24/status")

@@ -310,6 +310,56 @@ def init_db() -> None:
                 changed_by TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_config_audit_log_key ON config_audit_log(key);
+
+            -- Per-call log for the free providers. FR24 already has its own
+            -- fr24_request_log (which additionally tracks credits); the /api/logs
+            -- endpoint unions the two into one operator-facing timeline.
+            CREATE TABLE IF NOT EXISTS provider_call_log (
+                id TEXT PRIMARY KEY,
+                requested_at TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                region_id TEXT,
+                endpoint TEXT,
+                outcome TEXT NOT NULL,
+                http_status INTEGER,
+                latency_ms INTEGER,
+                aircraft_returned INTEGER,
+                error_message TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_provider_call_log_at
+                ON provider_call_log(requested_at);
+
+            -- Every normalized observation, whether or not it fell inside a
+            -- selected area. aircraft_state only keeps the current row per
+            -- aircraft and process_observation persists nothing at all for
+            -- aircraft outside every selected area, so without this table a
+            -- non-finding leaves no trace and cannot be reviewed after the fact.
+            CREATE TABLE IF NOT EXISTS observation_log (
+                id TEXT PRIMARY KEY,
+                recorded_at TEXT NOT NULL,
+                observed_at TEXT,
+                provider TEXT NOT NULL,
+                region_id TEXT,
+                aircraft_hex TEXT NOT NULL,
+                callsign TEXT,
+                registration TEXT,
+                aircraft_type TEXT,
+                latitude REAL,
+                longitude REAL,
+                altitude_ft REAL,
+                ground_speed_kt REAL,
+                on_ground INTEGER NOT NULL DEFAULT 0 CHECK(on_ground IN (0,1)),
+                inside INTEGER NOT NULL DEFAULT 0 CHECK(inside IN (0,1)),
+                area_ids_json TEXT NOT NULL DEFAULT '[]',
+                area_names_json TEXT NOT NULL DEFAULT '[]',
+                classification TEXT,
+                disposition TEXT NOT NULL,
+                disposition_reason TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_observation_log_at
+                ON observation_log(recorded_at);
+            CREATE INDEX IF NOT EXISTS idx_observation_log_hex
+                ON observation_log(aircraft_hex);
             """
         )
         # Upgrade existing v0.3 volumes in place.
@@ -1113,6 +1163,204 @@ def active_states() -> list[dict[str, Any]]:
         item["area_names"] = json.loads(item.pop("area_names_json"))
         result.append(item)
     return result
+
+
+def record_provider_call(
+    *,
+    provider: str,
+    region_id: str | None,
+    endpoint: str | None,
+    outcome: str,
+    http_status: int | None = None,
+    latency_ms: int | None = None,
+    aircraft_returned: int | None = None,
+    error_message: str | None = None,
+) -> None:
+    """One row per real HTTP attempt against a free provider. Never raises:
+    losing a log row must not fail a poll cycle that otherwise succeeded."""
+    try:
+        with db() as conn:
+            conn.execute(
+                """
+                INSERT INTO provider_call_log(
+                    id, requested_at, provider, region_id, endpoint, outcome,
+                    http_status, latency_ms, aircraft_returned, error_message
+                ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    utc_now_iso(),
+                    provider,
+                    region_id,
+                    endpoint,
+                    outcome,
+                    http_status,
+                    latency_ms,
+                    aircraft_returned,
+                    (error_message or None) and str(error_message)[:500],
+                ),
+            )
+    except sqlite3.Error:
+        logger.warning("provider call log insert failed", exc_info=True)
+
+
+def record_observation_log(
+    *,
+    provider: str,
+    region_id: str | None,
+    aircraft_hex: str,
+    callsign: str | None,
+    registration: str | None,
+    aircraft_type: str | None,
+    latitude: float | None,
+    longitude: float | None,
+    altitude_ft: float | None,
+    ground_speed_kt: float | None,
+    on_ground: bool,
+    observed_at: str | None,
+    inside: bool,
+    area_ids: list[str] | None,
+    area_names: list[str] | None,
+    classification: str | None,
+    disposition: str,
+    disposition_reason: str | None = None,
+) -> None:
+    """One row per normalized observation, inside a selected area or not.
+    Never raises: detection must not fail because logging did."""
+    try:
+        with db() as conn:
+            conn.execute(
+                """
+                INSERT INTO observation_log(
+                    id, recorded_at, observed_at, provider, region_id, aircraft_hex,
+                    callsign, registration, aircraft_type, latitude, longitude,
+                    altitude_ft, ground_speed_kt, on_ground, inside,
+                    area_ids_json, area_names_json, classification,
+                    disposition, disposition_reason
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    utc_now_iso(),
+                    observed_at,
+                    provider,
+                    region_id,
+                    aircraft_hex,
+                    callsign,
+                    registration,
+                    aircraft_type,
+                    latitude,
+                    longitude,
+                    altitude_ft,
+                    ground_speed_kt,
+                    1 if on_ground else 0,
+                    1 if inside else 0,
+                    json.dumps(area_ids or []),
+                    json.dumps(area_names or [], ensure_ascii=False),
+                    classification,
+                    disposition,
+                    disposition_reason,
+                ),
+            )
+    except sqlite3.Error:
+        logger.warning("observation log insert failed", exc_info=True)
+
+
+def query_logs(
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    kind: str = "all",
+    provider: str | None = None,
+    aircraft_hex: str | None = None,
+    inside_only: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
+    """Unified operator timeline: free-provider calls, FR24 calls, and
+    observations, newest first. Returns (rows, total_matching)."""
+    want_calls = kind in {"all", "call"} and not inside_only and not aircraft_hex
+    want_obs = kind in {"all", "observation"}
+
+    selects: list[str] = []
+    params: list[Any] = []
+    if want_calls:
+        selects.append(
+            """
+            SELECT 'call' AS kind, requested_at AS at, provider, region_id,
+                   endpoint, outcome, http_status, latency_ms, aircraft_returned,
+                   NULL AS estimated_credits, error_message,
+                   NULL AS aircraft_hex, NULL AS callsign, NULL AS registration,
+                   NULL AS aircraft_type, NULL AS latitude, NULL AS longitude,
+                   NULL AS altitude_ft, NULL AS ground_speed_kt, NULL AS on_ground,
+                   NULL AS inside, NULL AS area_names_json, NULL AS classification,
+                   NULL AS disposition, NULL AS disposition_reason
+            FROM provider_call_log
+            WHERE (? IS NULL OR provider = ?)
+            """
+        )
+        params += [provider, provider]
+        selects.append(
+            """
+            SELECT 'call' AS kind, requested_at AS at, 'flightradar24' AS provider,
+                   cluster_id AS region_id, endpoint, http_outcome AS outcome,
+                   NULL AS http_status, latency_ms, records_returned AS aircraft_returned,
+                   estimated_credits, NULL AS error_message,
+                   NULL AS aircraft_hex, NULL AS callsign, NULL AS registration,
+                   NULL AS aircraft_type, NULL AS latitude, NULL AS longitude,
+                   NULL AS altitude_ft, NULL AS ground_speed_kt, NULL AS on_ground,
+                   NULL AS inside, NULL AS area_names_json, NULL AS classification,
+                   NULL AS disposition, NULL AS disposition_reason
+            FROM fr24_request_log
+            WHERE (? IS NULL OR ? = 'flightradar24')
+            """
+        )
+        params += [provider, provider]
+    if want_obs:
+        selects.append(
+            """
+            SELECT 'observation' AS kind, recorded_at AS at, provider, region_id,
+                   NULL AS endpoint, NULL AS outcome, NULL AS http_status,
+                   NULL AS latency_ms, NULL AS aircraft_returned,
+                   NULL AS estimated_credits, NULL AS error_message,
+                   aircraft_hex, callsign, registration, aircraft_type,
+                   latitude, longitude, altitude_ft, ground_speed_kt, on_ground,
+                   inside, area_names_json, classification,
+                   disposition, disposition_reason
+            FROM observation_log
+            WHERE (? IS NULL OR provider = ?)
+              AND (? IS NULL OR aircraft_hex = ?)
+              AND (? = 0 OR inside = 1)
+            """
+        )
+        hex_value = (aircraft_hex or "").strip().lower() or None
+        params += [provider, provider, hex_value, hex_value, 1 if inside_only else 0]
+
+    if not selects:
+        return [], 0
+    union = " UNION ALL ".join(selects)
+    with db() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) AS c FROM ({union})", params
+        ).fetchone()["c"]
+        rows = conn.execute(
+            f"SELECT * FROM ({union}) ORDER BY at DESC LIMIT ? OFFSET ?",
+            [*params, max(1, min(int(limit), 500)), max(0, int(offset))],
+        ).fetchall()
+    return [dict(r) for r in rows], int(total)
+
+
+def cleanup_logs(retention_days: int) -> int:
+    """Trim both log tables to the retention window. Returns rows removed."""
+    cutoff = (utc_now() - timedelta(days=retention_days)).isoformat()
+    removed = 0
+    with db() as conn:
+        for table, column in (
+            ("provider_call_log", "requested_at"),
+            ("observation_log", "recorded_at"),
+        ):
+            removed += conn.execute(
+                f"DELETE FROM {table} WHERE {column} < ?", (cutoff,)
+            ).rowcount
+    return removed
 
 
 def cleanup_stale_states(retention_days: int, exclude_provider: str | None = None) -> int:

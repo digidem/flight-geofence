@@ -8,6 +8,7 @@ from .database import (
     active_states,
     get_state,
     insert_event,
+    record_observation_log,
     update_event_email,
     upsert_state,
 )
@@ -164,6 +165,40 @@ def _close_episode(state: dict, observation: AircraftObservation, classification
     upsert_state(state)
 
 
+def _log_observation(
+    observation: AircraftObservation,
+    areas: list,
+    classification: str,
+    disposition: str,
+    reason: str,
+) -> None:
+    """Record every observation the pipeline sees, inside a selected area or
+    not. aircraft_state keeps only the newest row per aircraft and the
+    outside-with-no-episode path below persists nothing at all, so this table
+    is the only way to review afterwards why a given aircraft was not a
+    finding."""
+    record_observation_log(
+        provider=observation.provider,
+        region_id=observation.region_id,
+        aircraft_hex=observation.hex,
+        callsign=observation.callsign,
+        registration=observation.registration,
+        aircraft_type=observation.aircraft_type,
+        latitude=observation.latitude,
+        longitude=observation.longitude,
+        altitude_ft=observation.altitude_ft,
+        ground_speed_kt=observation.ground_speed_kt,
+        on_ground=bool(observation.on_ground),
+        observed_at=observation.observed_at.isoformat(),
+        inside=bool(areas),
+        area_ids=[a.id for a in areas],
+        area_names=[a.name for a in areas],
+        classification=classification,
+        disposition=disposition,
+        disposition_reason=reason,
+    )
+
+
 async def process_observation(
     observation: AircraftObservation,
     index: GeofenceIndex,
@@ -177,9 +212,20 @@ async def process_observation(
     if previous:
         last_seen = parse_time(previous.get("last_seen_at"))
         if last_seen and observation.observed_at <= last_seen:
+            _log_observation(
+                observation, areas, classification, "stale_position",
+                "Position is not newer than the last one already recorded for "
+                "this aircraft; ignored so out-of-order data cannot rewrite state.",
+            )
             return 0
 
     if not areas:
+        if not (previous and previous.get("episode_id")):
+            _log_observation(
+                observation, areas, classification, "outside_no_episode",
+                "Observed outside every selected protected area with no open "
+                "episode; nothing to track and no event possible.",
+            )
         if previous and previous.get("episode_id"):
             previous["outside_observations"] = int(previous.get("outside_observations") or 0) + 1
             previous.update(
@@ -198,8 +244,18 @@ async def process_observation(
             if previous["outside_observations"] >= int(
                 get_setting("outside_confirmation_observations")
             ):
+                _log_observation(
+                    observation, areas, classification, "episode_closed_by_leaving",
+                    "Confirmed outside the selected area(s); the episode closed "
+                    "without an event, which is the expected exit path.",
+                )
                 _close_episode(previous, observation, classification, classification_reason)
             else:
+                _log_observation(
+                    observation, areas, classification, "outside_pending_confirmation",
+                    "Seen outside the area but not yet enough outside observations "
+                    "to confirm departure; the episode stays open.",
+                )
                 upsert_state(previous)
         elif previous:
             _close_episode(previous, observation, classification, classification_reason)
@@ -219,6 +275,10 @@ async def process_observation(
     )
 
     if not continuing:
+        _log_observation(
+            observation, areas, classification, "inside_new_episode",
+            "First observation inside the selected area(s); a new episode opened.",
+        )
         upsert_state(
             {
                 "aircraft_hex": observation.hex,
@@ -253,6 +313,11 @@ async def process_observation(
 
     state = previous
     had_gap = int(state.get("missing_cycles") or 0) > 0
+    _log_observation(
+        observation, areas, classification, "inside_continuing",
+        "Continuing observation inside the selected area(s); episode advancing "
+        f"toward the stop and disappearance thresholds{' after a coverage gap' if had_gap else ''}.",
+    )
     state.update(
         {
             "callsign": observation.callsign,

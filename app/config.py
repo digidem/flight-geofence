@@ -99,6 +99,7 @@ class EnvSettings(BaseSettings):
     user_agent: str = "flight-geofence-poc/0.4 contact=luandro@gmail.com"
     scheduler_initial_delay_seconds: int = 20
     state_retention_days: int = 14
+    log_retention_days: int = 90
     # Only enforced when fr24_auto_delete_enabled is true (default false).
     # FLIGHTRADAR_API.md sec. 17's 30-day deletion requirement has a built-in
     # exception "unless a different written agreement exists" -- this

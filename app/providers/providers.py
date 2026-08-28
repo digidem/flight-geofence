@@ -3,17 +3,21 @@ from __future__ import annotations
 import asyncio
 import email.utils
 import logging
+import re
+import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 
 from ..config import env_settings
-from ..i18n import t
 from ..database import (
     get_query_regions,
     provider_requests_today,
+    record_provider_call,
     record_provider_request,
 )
+from ..i18n import t
 from ..settings_store import get_setting
 from .base import AircraftObservation
 from .readsb import normalize_readsb
@@ -75,6 +79,24 @@ def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
     return min(2**attempt, 10)
 
 
+_NUMERIC_SEGMENT_RE = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+def _endpoint_label(url: str) -> str:
+    """Short, stable endpoint label for the call log.
+
+    Drops the query string and every numeric path segment: these providers put
+    the region centre and radius directly in the path
+    (/v2/point/<lat>/<lon>/<radius>), and protected-area geometry must not be
+    written to logs. "v2/point" is what identifies the endpoint anyway."""
+    try:
+        path = urlparse(url).path.strip("/")
+    except ValueError:
+        return "unknown"
+    kept = [seg for seg in path.split("/") if seg and not _NUMERIC_SEGMENT_RE.match(seg)]
+    return "/".join(kept) or "unknown"
+
+
 async def _get_json(
     client: httpx.AsyncClient,
     url: str,
@@ -82,11 +104,13 @@ async def _get_json(
     params: dict | None = None,
     headers: dict[str, str] | None = None,
     provider: str | None = None,
+    region_id: str | None = None,
 ) -> dict:
     last_error: Exception | None = None
     for attempt in range(3):
         response: httpx.Response | None = None
         request_made = False
+        started = time.monotonic()
         try:
             if provider == "airplanes_live" and provider_requests_today(provider) >= 500:
                 raise ProviderFailure(t("err_provider_daily_limit", _lang()))
@@ -102,10 +126,27 @@ async def _get_json(
                 raise ProviderFailure(t("err_provider_non_object", _lang()))
             if provider:
                 record_provider_request(provider, True)
+                record_provider_call(
+                    provider=provider,
+                    region_id=region_id,
+                    endpoint=_endpoint_label(url),
+                    outcome="ok",
+                    http_status=response.status_code,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                )
             return payload
         except (httpx.HTTPError, ValueError, ProviderFailure) as exc:
             if request_made and provider:
                 record_provider_request(provider, False)
+                record_provider_call(
+                    provider=provider,
+                    region_id=region_id,
+                    endpoint=_endpoint_label(url),
+                    outcome="failed",
+                    http_status=getattr(response, "status_code", None),
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    error_message=str(exc),
+                )
             last_error = exc
             if not request_made and provider == "airplanes_live":
                 break
@@ -146,7 +187,7 @@ async def _readsb_region(
         raise ProviderFailure(f"{t('err_unsupported_readsb_provider', _lang())}: {provider}")
 
     payload = await _get_json(
-        client, url, headers=headers, provider=provider
+        client, url, headers=headers, provider=provider, region_id=region.get("id")
     )
 
     response_now = float(payload.get("now") or datetime.now(timezone.utc).timestamp())
