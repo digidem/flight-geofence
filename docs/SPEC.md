@@ -204,6 +204,18 @@ When multiple free providers are enabled:
 - Dashboard retention presentation mirrors this rule: when auto-delete is off, FR24 events and FR24
   outside state are shown as indefinite; otherwise FR24 events use `min(FR24_RETENTION_DAYS, 29)` and FR24
   outside state uses `STATE_RETENTION_DAYS`; free-provider outside state always shows `STATE_RETENTION_DAYS`.
+- Record an audit trail behind the Logs tab: one row per provider HTTP call
+  (outcome, status, latency, aircraft returned, credits where applicable) and one row per
+  normalized observation — *including aircraft that matched no selected area*, which are otherwise
+  never persisted, so an operator can review why something was not a finding instead of trusting a
+  silent dashboard. Each observation records the matched areas, airline classification, and a
+  disposition explaining the outcome.
+- Call-log endpoint labels must be normalized to drop query strings and every numeric path segment:
+  providers place the region centre and radius in the request path, and protected-area geometry must
+  never be written to logs.
+- Trim both log tables to `LOG_RETENTION_DAYS` (default 90) on the same cadence as the other
+  retention windows. Log writes must never raise: losing an audit row must not fail a poll cycle or
+  block detection.
 - Support consistent SQLite online backup.
 - Prevent manual CLI poll/sync from overlapping the server scheduler with cross-process file locks.
 

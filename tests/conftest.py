@@ -40,6 +40,8 @@ _CLEANUP_TABLES = (
     "fr24_tracks",
     "events",
     "provider_requests",
+    "provider_call_log",
+    "observation_log",
     "fr24_cluster_areas",
     "fr24_clusters",
     "fr24_poll_runs",

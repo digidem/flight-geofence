@@ -33,6 +33,7 @@ Flight Geofence Alerts is a private, single-operator proof of concept that combi
 - [Security model](#security-model)
 - [Project structure](#project-structure)
 - [Testing](#testing)
+- [Logs tab — call and observation audit](#logs-tab--call-and-observation-audit)
 - [Known limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
@@ -770,6 +771,41 @@ set `FR24_POLL_INTERVAL_SECONDS=86400` in `.env.sandbox` and re-create
 flight-geofence-sandbox up -d`) before simulating. Fixture rotation is
 tolerated: the scenarios discover whatever aircraft the sandbox currently
 serves and skip with a clear message if none are event-eligible.
+
+## Logs tab — call and observation audit
+
+Detection only tells you what it *found*. The Logs tab tells you what it
+**saw**, so a quiet dashboard can be verified rather than trusted.
+
+Two record types share one timeline:
+
+- **Calls** — every HTTP request to every provider, with outcome, status,
+  latency, aircraft returned and (for FR24) credits. Failed calls are
+  highlighted, which makes a silently degraded provider obvious: a run of
+  `429 Too Many Requests` against one region means that region is not being
+  covered, even while the poll as a whole still reports success.
+- **Observations** — every aircraft the pipeline normalized, *including the
+  ones that matched nothing*. Previously an aircraft outside every selected
+  area left no trace at all, so a non-finding could not be reviewed after the
+  fact. Each row carries the area(s) matched, the airline classification, and
+  a plain-language disposition explaining why it did or did not become an
+  event (`outside_no_episode`, `inside_continuing`, `stale_position`, …).
+
+Every aircraft row links out to its profile on the tracking platforms —
+ADSB.lol, ADS-B Exchange, Airplanes.live, FlightAware, Flightradar24, and the
+ANAC registry for Brazilian registrations — so a suspicious hex can be checked
+against independent history in one click. Links are built by the validated
+builders in `app/links.py` (and their frontend twins); URLs are never
+hand-assembled.
+
+Filter by record type, provider, aircraft hex, or "inside protected areas
+only". Retention is `LOG_RETENTION_DAYS` (default 90), trimmed on each poll
+cycle alongside the other retention windows.
+
+Endpoint and geometry safety: the call log stores a normalized endpoint label
+with every numeric path segment removed, because these providers put the
+region centre and radius directly in the request path and protected-area
+geometry must never be written to logs.
 
 ## Known limitations
 
