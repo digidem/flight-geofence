@@ -1,4 +1,4 @@
-# Final audit — v0.5.5
+# Final audit — v0.6.0
 
 This release is a corrective and hardening pass over v0.3.
 
