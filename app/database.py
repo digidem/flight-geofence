@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -1165,6 +1166,19 @@ def active_states() -> list[dict[str, Any]]:
     return result
 
 
+_LOG_URL_RE = re.compile(r"https?://[^\s'\"]+")
+
+
+def _scrub_log_message(message: str | None) -> str | None:
+    """Provider errors quote the failing URL, and these providers put the
+    region centre and radius in the path -- so the raw text would write
+    protected-area geometry into the audit log. Keep the human-readable part,
+    drop the URL."""
+    if not message:
+        return None
+    return _LOG_URL_RE.sub("<url>", str(message))[:500].strip() or None
+
+
 def record_provider_call(
     *,
     provider: str,
@@ -1197,7 +1211,7 @@ def record_provider_call(
                     http_status,
                     latency_ms,
                     aircraft_returned,
-                    (error_message or None) and str(error_message)[:500],
+                    _scrub_log_message(error_message),
                 ),
             )
     except sqlite3.Error:

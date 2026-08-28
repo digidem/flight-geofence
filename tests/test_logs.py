@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from shapely.geometry import Polygon, mapping
 
 from app.database import (
+    _scrub_log_message,
     cleanup_logs,
     db,
     query_logs,
@@ -329,3 +330,34 @@ def test_recorders_never_raise_on_bad_input():
     )
     _, total = query_logs()
     assert total == 2
+
+
+def test_provider_error_message_never_stores_geometry():
+    """httpx quotes the failing URL, and these providers put the region centre
+    and radius in the path -- the raw text would leak protected-area geometry
+    into the audit log."""
+    raw = (
+        "Client error '429 Too Many Requests' for url "
+        "'https://api.adsb.lol/v2/point/0.280901/-52.592973/200.0'"
+    )
+    scrubbed = _scrub_log_message(raw)
+    assert "0.280901" not in scrubbed
+    assert "-52.592973" not in scrubbed
+    assert "api.adsb.lol" not in scrubbed
+    assert "429 Too Many Requests" in scrubbed, "the actionable part must survive"
+
+    record_provider_call(
+        provider="adsb_lol",
+        region_id="r1",
+        endpoint="v2/point",
+        outcome="failed",
+        http_status=429,
+        error_message=raw,
+    )
+    rows, _ = query_logs(kind="call")
+    assert "0.280901" not in (rows[0]["error_message"] or "")
+
+
+def test_scrub_handles_empty_message():
+    assert _scrub_log_message(None) is None
+    assert _scrub_log_message("") is None
