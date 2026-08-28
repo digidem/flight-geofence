@@ -25,8 +25,8 @@ from app.database import (
     replace_areas,
 )
 from app.detection import process_observation
-from app.main import app
 from app.geofences import GeofenceIndex
+from app.main import app
 from app.providers.base import AircraftObservation
 from app.providers.providers import _endpoint_label
 
