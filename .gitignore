@@ -12,3 +12,5 @@ htmlcov/
 data/
 *.pyc
 .mimocode/
+.env.sandbox
+sandbox-artifacts/

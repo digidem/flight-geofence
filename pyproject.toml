@@ -26,6 +26,9 @@ dev = [
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+markers = [
+    "fr24_sandbox: live Flightradar24 sandbox tests (opt-in: FR24_SANDBOX_API_KEY for the client contract tests, FR24_SANDBOX_BASE_URL + FR24_SANDBOX_ADMIN_PASSWORD for the compose-stack ones; see FLIGHTRADAR_API.md 'Sandbox tests')",
+]
 
 [tool.ruff]
 target-version = "py312"

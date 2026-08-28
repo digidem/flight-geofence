@@ -1,0 +1,20 @@
+# FR24 sandbox stack: same image as production, isolated project/volume/port,
+# and an env_file that contains ONLY sandbox values -- the production .env
+# (with the real API key) is fully replaced, never merged.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.sandbox.yml \
+#     -p flight-geofence-sandbox up -d --build
+#   bash scripts/fr24_sandbox_smoke.sh     (or run pytest -m fr24_sandbox)
+# Teardown:
+#   docker compose -p flight-geofence-sandbox down -v
+#
+# Requires docker compose >= 2.24 for the !override tag.
+name: flight-geofence-sandbox
+
+services:
+  flight-monitor:
+    env_file: !override [.env.sandbox]
+    # Fixed host port 8081 so the sandbox stack can never shadow, or be
+    # confused with, a production stack on 8080.
+    ports: !override ["127.0.0.1:8081:8080"]
