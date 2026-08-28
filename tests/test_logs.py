@@ -28,6 +28,7 @@ from app.detection import process_observation
 from app.geofences import GeofenceIndex
 from app.main import app
 from app.providers.base import AircraftObservation
+from app.providers.fr24 import _log_dropped_aircraft
 from app.providers.providers import _endpoint_label
 
 # Matches the polygon used by the other detection tests.
@@ -448,3 +449,72 @@ def test_recorders_swallow_a_real_constraint_violation():
 
     _, total = query_logs()
     assert total == 0, "bad rows must be dropped, not partially written"
+
+
+# ---------------------------------------------------------------------------
+# "What did we actually see?"
+# ---------------------------------------------------------------------------
+
+
+def test_detection_kind_returns_sightings_not_empty_calls():
+    """kind=detection answers 'what did we see', so it must drop the calls that
+    found nothing while keeping calls that did -- those are the only record of
+    detections made before per-aircraft logging existed."""
+    record_provider_call(
+        provider="adsb_lol", region_id="r1", endpoint="v2/point",
+        outcome="ok", http_status=200, aircraft_returned=0,
+    )
+    record_provider_call(
+        provider="adsb_lol", region_id="r2", endpoint="v2/point",
+        outcome="ok", http_status=200, aircraft_returned=3,
+    )
+    record_provider_call(
+        provider="adsb_lol", region_id="r3", endpoint="v2/point",
+        outcome="failed", http_status=429,
+    )
+    record_observation_log(
+        provider="flightradar24", region_id="c1", aircraft_hex="ab7558",
+        callsign=None, registration=None, aircraft_type=None,
+        latitude=1.0, longitude=2.0, altitude_ft=9500.0, ground_speed_kt=163.0,
+        on_ground=False, observed_at=None, inside=False, area_ids=[], area_names=[],
+        classification=None, disposition="outside_no_episode",
+    )
+
+    rows, total = query_logs(kind="detection")
+
+    assert total == 2
+    kinds = sorted(r["kind"] for r in rows)
+    assert kinds == ["call", "observation"]
+    call_row = next(r for r in rows if r["kind"] == "call")
+    assert call_row["aircraft_returned"] == 3
+
+
+def test_detection_kind_is_accepted_by_the_endpoint():
+    with _authed_client() as client:
+        assert client.get("/api/logs?kind=detection").status_code == 200
+
+
+def test_aircraft_dropped_before_detection_is_still_logged():
+    """FR24 bills for every aircraft it returns. One dropped by the freshness
+    gate never reaches process_observation, so without this row the difference
+    between 'returned' and 'processed' would be invisible."""
+    _log_dropped_aircraft(
+        {"hex": "ABC123", "callsign": "PRXYZ", "reg": "PR-XYZ"},
+        "cluster-1",
+        "dropped_stale_or_unusable",
+    )
+
+    rows, total = query_logs(kind="observation")
+    assert total == 1
+    assert rows[0]["aircraft_hex"] == "abc123"
+    assert rows[0]["disposition"] == "dropped_stale_or_unusable"
+    assert "POSITION_MAX_AGE_SECONDS" in rows[0]["disposition_reason"]
+
+
+def test_malformed_provider_record_is_logged_not_lost():
+    _log_dropped_aircraft("not-a-dict", "cluster-1", "dropped_malformed_record")
+
+    rows, total = query_logs(kind="observation")
+    assert total == 1
+    assert rows[0]["aircraft_hex"] == "unknown"
+    assert rows[0]["disposition"] == "dropped_malformed_record"

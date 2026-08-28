@@ -799,7 +799,16 @@ builders in `app/links.py` (and their frontend twins); URLs are never
 hand-assembled.
 
 Filter by record type, provider, aircraft hex, or "inside protected areas
-only". Retention is `LOG_RETENTION_DAYS` (default 90), trimmed on each poll
+only". The **Aircraft detections** record type answers "what did we actually
+see?" — every observation plus the calls that returned at least one aircraft,
+hiding the empty polls. Detections made before per-aircraft logging existed
+still appear there as a call row with its count.
+
+Aircraft the provider returned but detection never processed are logged too
+(`dropped_stale_or_unusable`, `dropped_malformed_record`). A position older
+than `POSITION_MAX_AGE_SECONDS` is discarded while parsing, so without that row
+the gap between what FR24 billed for and what detection actually saw would be
+invisible. Retention is `LOG_RETENTION_DAYS` (default 90), trimmed on each poll
 cycle alongside the other retention windows.
 
 Endpoint and geometry safety: the call log stores a normalized endpoint label

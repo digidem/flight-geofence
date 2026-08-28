@@ -210,6 +210,9 @@ When multiple free providers are enabled:
   never persisted, so an operator can review why something was not a finding instead of trusting a
   silent dashboard. Each observation records the matched areas, airline classification, and a
   disposition explaining the outcome.
+- Observations discarded before detection -- stale beyond `POSITION_MAX_AGE_SECONDS`,
+  future-dated, or unparseable -- must still be logged. The provider bills for every aircraft it
+  returns, so an aircraft that is paid for but never processed must not disappear from the record.
 - Call-log endpoint labels must be normalized to drop query strings and every numeric path segment:
   providers place the region centre and radius in the request path, and protected-area geometry must
   never be written to logs.

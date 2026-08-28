@@ -1291,8 +1291,12 @@ def query_logs(
 ) -> tuple[list[dict[str, Any]], int]:
     """Unified operator timeline: free-provider calls, FR24 calls, and
     observations, newest first. Returns (rows, total_matching)."""
-    want_calls = kind in {"all", "call"} and not inside_only and not aircraft_hex
-    want_obs = kind in {"all", "observation"}
+    # "detection" answers "what did we actually see?" -- every observation plus
+    # the calls that returned at least one aircraft, so detections logged before
+    # per-aircraft logging existed still appear as a call row with a count.
+    detections_only = kind == "detection"
+    want_calls = kind in {"all", "call", "detection"} and not inside_only and not aircraft_hex
+    want_obs = kind in {"all", "observation", "detection"}
 
     selects: list[str] = []
     params: list[Any] = []
@@ -1309,9 +1313,10 @@ def query_logs(
                    NULL AS disposition, NULL AS disposition_reason
             FROM provider_call_log
             WHERE (? IS NULL OR provider = ?)
+              AND (? = 0 OR COALESCE(aircraft_returned, 0) > 0)
             """
         )
-        params += [provider, provider]
+        params += [provider, provider, 1 if detections_only else 0]
         selects.append(
             """
             SELECT 'call' AS kind, requested_at AS at, 'flightradar24' AS provider,
@@ -1325,9 +1330,10 @@ def query_logs(
                    NULL AS disposition, NULL AS disposition_reason
             FROM fr24_request_log
             WHERE (? IS NULL OR ? = 'flightradar24')
+              AND (? = 0 OR COALESCE(records_returned, 0) > 0)
             """
         )
-        params += [provider, provider]
+        params += [provider, provider, 1 if detections_only else 0]
     if want_obs:
         selects.append(
             """

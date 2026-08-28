@@ -831,8 +831,11 @@ def logs_index(
     """Operator audit trail: provider calls and every observation, so a
     non-finding can be reviewed instead of taken on trust."""
     require_auth(request)
-    if kind not in {"all", "call", "observation"}:
-        raise HTTPException(status_code=400, detail="kind must be all, call or observation")
+    if kind not in {"all", "call", "observation", "detection"}:
+        raise HTTPException(
+            status_code=400,
+            detail="kind must be all, call, observation or detection",
+        )
     rows, total = query_logs(
         limit=limit,
         offset=offset,

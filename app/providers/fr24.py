@@ -24,7 +24,7 @@ import httpx
 
 from .. import fr24_credits
 from ..config import env_settings
-from ..database import record_fr24_request
+from ..database import record_fr24_request, record_observation_log
 from ..i18n import t
 from ..settings_store import get_setting
 from .base import AircraftObservation
@@ -246,6 +246,41 @@ class LightResult:
     estimated_credits: int
 
 
+def _log_dropped_aircraft(raw: object, cluster_id: str, disposition: str) -> None:
+    """An aircraft FR24 returned (and billed) that never reaches detection --
+    stale beyond POSITION_MAX_AGE_SECONDS, future-dated, or unparseable.
+    Without a row here the difference between "returned" and "processed" is
+    invisible, which is exactly the gap the audit trail exists to close."""
+    data = raw if isinstance(raw, dict) else {}
+    hex_code = str(data.get("hex") or "").strip().lower() or "unknown"
+    reason = (
+        "Position older than POSITION_MAX_AGE_SECONDS (or future-dated/unparseable); "
+        "FR24 returned and billed this aircraft but detection never saw it."
+        if disposition == "dropped_stale_or_unusable"
+        else "Provider returned a record that was not a JSON object."
+    )
+    record_observation_log(
+        provider="flightradar24",
+        region_id=cluster_id,
+        aircraft_hex=hex_code,
+        callsign=str(data.get("callsign") or data.get("flight") or "").strip().upper() or None,
+        registration=str(data.get("reg") or "").strip().upper() or None,
+        aircraft_type=str(data.get("type") or "").strip().upper() or None,
+        latitude=None,
+        longitude=None,
+        altitude_ft=None,
+        ground_speed_kt=None,
+        on_ground=False,
+        observed_at=None,
+        inside=False,
+        area_ids=[],
+        area_names=[],
+        classification=None,
+        disposition=disposition,
+        disposition_reason=reason,
+    )
+
+
 async def fetch_light(
     client: httpx.AsyncClient,
     *,
@@ -273,12 +308,18 @@ async def fetch_light(
         raw_records = payload.get("data")
         if not isinstance(raw_records, list):
             raise FR24Failure("FR24 Light response missing/invalid 'data' field (schema mismatch)")
-        observations = [
-            item
-            for raw in raw_records
-            if isinstance(raw, dict)
-            and (item := normalize_light_observation(raw, cluster_id)) is not None
-        ]
+        observations = []
+        for raw in raw_records:
+            if not isinstance(raw, dict):
+                _log_dropped_aircraft(raw, cluster_id, "dropped_malformed_record")
+                continue
+            item = normalize_light_observation(raw, cluster_id)
+            if item is None:
+                # Billed for, counted in records_returned, but never reaches
+                # detection -- log it or the aircraft vanishes silently.
+                _log_dropped_aircraft(raw, cluster_id, "dropped_stale_or_unusable")
+                continue
+            observations.append(item)
         raw_count = len(raw_records)
         possibly_truncated = raw_count >= limit
         estimated_credits = fr24_credits.estimate_light_credits(raw_count)
