@@ -22,6 +22,8 @@ const appState = {
   areas: [],
   events: [],
   areaFilter: { search: "", category: "", selected: "" },
+  logsFilter: { kind: "all", provider: "", hex: "", inside: false },
+  logsOffset: 0,
   language: "en",
   timezone: "America/Sao_Paulo",
   translations: fallbackTranslations,
@@ -780,6 +782,145 @@ async function loadReviews() {
   });
 }
 
+const LOGS_LIMIT = 100;
+
+function translateDisposition(disposition) {
+  const mapping = {
+    stale_position: "logs_disposition_stale_position",
+    outside_no_episode: "logs_disposition_outside_no_episode",
+    outside_pending_confirmation: "logs_disposition_outside_pending_confirmation",
+    episode_closed_by_leaving: "logs_disposition_episode_closed_by_leaving",
+    inside_new_episode: "logs_disposition_inside_new_episode",
+    inside_continuing: "logs_disposition_inside_continuing",
+  };
+  return t(mapping[disposition] || disposition);
+}
+
+function logsPopulateProviderSelect() {
+  const select = $("#logs-provider");
+  if (!select) return;
+  const options = appState.providerOptions || {};
+  const wanted = appState.logsFilter.provider || "";
+  select.innerHTML =
+    `<option value="">${escapeHtml(t("logs_filter_provider_all"))}</option>` +
+    Object.entries(options)
+      .map(([id, info]) => `<option value="${escapeHtml(id)}">${escapeHtml(info.name)}</option>`)
+      .join("");
+  select.value = wanted;
+}
+
+// kind=="call" fields (endpoint/outcome/http_status/latency_ms/aircraft_returned/
+// estimated_credits/error_message) are all null on observation rows and vice
+// versa (contract in the teammate's brief) -- branch on row.kind, not on
+// individual field presence.
+function logsDetailCell(row) {
+  if (row.kind === "call") {
+    const failed = row.outcome === "failed";
+    const badge = `<span class="signal ${failed ? "failed" : ""}">${escapeHtml(t(failed ? "logs_outcome_failed" : "logs_outcome_ok"))}</span>`;
+    const parts = [
+      row.endpoint ? escapeHtml(row.endpoint) : null,
+      row.http_status != null ? `HTTP ${escapeHtml(String(row.http_status))}` : null,
+      row.latency_ms != null ? `${escapeHtml(String(row.latency_ms))} ms` : null,
+      row.aircraft_returned != null ? `${escapeHtml(String(row.aircraft_returned))} ${escapeHtml(t("logs_aircraft_returned"))}` : null,
+      row.estimated_credits != null ? `${escapeHtml(String(row.estimated_credits))} ${escapeHtml(t("fr24_credits"))}` : null,
+    ].filter(Boolean).join(" · ");
+    const errorLine = row.error_message ? `<p class="error">${escapeHtml(row.error_message)}</p>` : "";
+    return `${badge}<p class="muted">${parts}</p>${errorLine}`;
+  }
+  const bits = [
+    row.callsign ? escapeHtml(row.callsign) : null,
+    row.aircraft_type ? escapeHtml(row.aircraft_type) : null,
+    row.altitude_ft != null ? `${escapeHtml(String(row.altitude_ft))} ft` : null,
+    row.ground_speed_kt != null ? `${escapeHtml(String(row.ground_speed_kt))} kt` : null,
+    row.on_ground ? escapeHtml(t("logs_on_ground")) : null,
+  ].filter(Boolean).join(" · ");
+  return bits || "—";
+}
+
+function logsAircraftCell(row) {
+  if (row.kind !== "observation" || !row.aircraft_hex) return "—";
+  const hex = row.aircraft_hex.toUpperCase();
+  const hexLinks = aircraftHexLinks(row.aircraft_hex);
+  const hexDisplay = hexLinks.length
+    ? `<a href="${escapeHtml(hexLinks[0].url)}" target="_blank" rel="noopener noreferrer" class="log-aircraft-link">${escapeHtml(hex)}</a>`
+    : escapeHtml(hex);
+  const links = [...hexLinks, ...registrationLinks(row.registration), ...callsignLinks(row.callsign)];
+  const linkList = links
+    .map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`)
+    .join(" · ");
+  const regDisplay = row.registration ? ` · ${escapeHtml(row.registration)}` : "";
+  return `<strong>${hexDisplay}</strong>${regDisplay}${linkList ? `<div class="muted">${linkList}</div>` : ""}`;
+}
+
+function logsDispositionCell(row) {
+  if (row.kind !== "observation") return "—";
+  const badge = `<span class="signal ${row.inside ? "inside" : ""}">${escapeHtml(t(row.inside ? "logs_inside_badge" : "logs_outside_badge"))}</span>`;
+  const areas = row.area_names && row.area_names.length ? row.area_names.map(escapeHtml).join(", ") : "—";
+  const classification = row.classification ? escapeHtml(translateClassification(row.classification)) : "";
+  const disposition = row.disposition ? escapeHtml(translateDisposition(row.disposition)) : "";
+  const summary = [classification, disposition].filter(Boolean).join(" · ");
+  const reason = row.disposition_reason ? `<p class="muted">${escapeHtml(row.disposition_reason)}</p>` : "";
+  return `${badge} ${areas}${summary ? `<p class="muted">${summary}</p>` : ""}${reason}`;
+}
+
+// A region/cluster deleted since the call was logged has no name left to
+// resolve, so fall back to a short prefix of its id rather than dumping a full
+// UUID into the column.
+function logsRegionLabel(row) {
+  if (row.region_name) return row.region_name;
+  if (!row.region_id) return "—";
+  return `${row.region_id.slice(0, 8)}…`;
+}
+
+function logRow(row) {
+  const failed = row.kind === "call" && row.outcome === "failed";
+  return `<tr class="${failed ? "log-row-failed" : ""}">
+    <td>${escapeHtml(formatTime(row.at))}</td>
+    <td>${escapeHtml(t(row.kind === "call" ? "logs_kind_call" : "logs_kind_observation"))}</td>
+    <td>${escapeHtml(row.provider || "—")}</td>
+    <td>${escapeHtml(logsRegionLabel(row))}</td>
+    <td>${logsDetailCell(row)}</td>
+    <td>${logsAircraftCell(row)}</td>
+    <td>${logsDispositionCell(row)}</td>
+  </tr>`;
+}
+
+// Errors surface inline (translated) instead of leaving the previous page's
+// rows silently stale -- mirrors saveSelection()/areaFeedback() on the
+// Areas tab.
+async function loadLogs() {
+  logsPopulateProviderSelect();
+  const errorBox = $("#logs-error");
+  if (errorBox) { errorBox.hidden = true; errorBox.textContent = ""; }
+  const params = new URLSearchParams({
+    limit: String(LOGS_LIMIT),
+    offset: String(appState.logsOffset),
+    kind: appState.logsFilter.kind,
+  });
+  if (appState.logsFilter.provider) params.set("provider", appState.logsFilter.provider);
+  if (appState.logsFilter.hex) params.set("hex", appState.logsFilter.hex);
+  if (appState.logsFilter.inside) params.set("inside", "1");
+  try {
+    const result = await api(`/api/logs?${params}`);
+    $("#logs-summary").textContent = t("logs_page_info")
+      .replace("{from}", String(result.rows.length ? appState.logsOffset + 1 : 0))
+      .replace("{to}", String(appState.logsOffset + result.rows.length))
+      .replace("{total}", String(result.total));
+    $("#logs-body").innerHTML = result.rows.length
+      ? result.rows.map(logRow).join("")
+      : `<tr><td colspan="7" class="muted">${t("logs_no_rows")}</td></tr>`;
+    $("#logs-prev").disabled = appState.logsOffset <= 0;
+    $("#logs-next").disabled = appState.logsOffset + result.rows.length >= result.total;
+  } catch (error) {
+    if (errorBox) {
+      errorBox.hidden = false;
+      errorBox.textContent = t("logs_load_error").replace("{error}", error.message);
+    }
+    $("#logs-body").innerHTML = "";
+    $("#logs-summary").textContent = "";
+  }
+}
+
 function formPayload(form) {
   const payload = {};
   [...form.elements].forEach((field) => {
@@ -892,6 +1033,7 @@ async function loadSettings() {
     box.checked = vals.includes(box.value);
     box.disabled = settings.flight_providers.locked;
   });
+  appState.providerOptions = result.provider_options;
   $("#provider-tests").innerHTML = Object.entries(result.provider_options)
     .map(([id, info]) => `<div class="provider-test"><div><strong>${escapeHtml(info.name)}</strong><p>${escapeHtml(info.note)}</p></div><button class="button secondary" data-provider="${id}">${t('test_button')}</button><span></span></div>`)
     .join("");
@@ -986,6 +1128,7 @@ $("#lang-toggle").addEventListener("click", async () => {
     if (view === "events") await loadReviews();
     if (view === "settings") await loadSettings();
     if (view === "fr24") await loadFr24();
+    if (view === "logs") await loadLogs();
   }
   if (appState.csrfToken) {
     try {
@@ -1004,6 +1147,7 @@ $$(".tab").forEach((tab) => {
     if (tab.dataset.view === "events") await loadReviews();
     if (tab.dataset.view === "settings") await loadSettings();
     if (tab.dataset.view === "fr24") await loadFr24();
+    if (tab.dataset.view === "logs") await loadLogs();
   });
 });
 
@@ -1022,6 +1166,24 @@ $("#area-filter").addEventListener("click", () => {
 $("#select-all-filtered").addEventListener("click", () => bulkFiltered(true));
 $("#deselect-all-filtered").addEventListener("click", () => bulkFiltered(false));
 $("#review-refresh").addEventListener("click", loadReviews);
+$("#logs-filter")?.addEventListener("click", () => {
+  appState.logsFilter = {
+    kind: $("#logs-kind").value,
+    provider: $("#logs-provider").value,
+    hex: $("#logs-hex").value.trim(),
+    inside: $("#logs-inside").checked,
+  };
+  appState.logsOffset = 0;
+  loadLogs();
+});
+$("#logs-prev")?.addEventListener("click", () => {
+  appState.logsOffset = Math.max(0, appState.logsOffset - LOGS_LIMIT);
+  loadLogs();
+});
+$("#logs-next")?.addEventListener("click", () => {
+  appState.logsOffset += LOGS_LIMIT;
+  loadLogs();
+});
 $("#settings-core").addEventListener("submit", (event) => {
   event.preventDefault();
   saveForm(event.currentTarget, { ...formPayload(event.currentTarget), flight_providers: $$("input[name='flight_providers']:checked").map((box) => box.value) });

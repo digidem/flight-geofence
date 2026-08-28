@@ -29,6 +29,7 @@
       <button class="tab" data-view="events" data-i18n="nav_events">Revisar eventos</button>
       <button class="tab" data-view="settings" data-i18n="nav_settings">Configurações</button>
       <button class="tab" data-view="fr24" data-i18n="nav_fr24">FR24</button>
+      <button class="tab" data-view="logs" data-i18n="nav_logs">Logs</button>
     </nav>
 
     <main>
@@ -188,6 +189,39 @@
             <p class="muted" data-i18n="fr24_test_cost_note">Executa uma consulta mínima (limite=1) no primeiro cluster ativo — custo estimado de até 6 créditos.</p>
             <button id="fr24-test" class="button secondary" data-i18n="fr24_test_button">Testar conexão</button>
             <div id="fr24-test-result" class="muted"></div>
+          </div>
+        </article>
+      </section>
+
+      <section id="view-logs" class="view">
+        <article class="panel">
+          <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="logs_subtitle">Auditoria de chamadas e observações</p><h2 data-i18n="logs_title">Linha do tempo de logs</h2></div>
+            <div class="filters">
+              <select id="logs-kind">
+                <option value="all" data-i18n="logs_filter_kind_all">Tudo</option>
+                <option value="call" data-i18n="logs_filter_kind_call">Chamadas</option>
+                <option value="observation" data-i18n="logs_filter_kind_observation">Observações</option>
+              </select>
+              <select id="logs-provider"></select>
+              <input id="logs-hex" data-i18n="logs_filter_hex" placeholder="Hex da aeronave">
+              <label class="check"><input type="checkbox" id="logs-inside"> <span data-i18n="logs_filter_inside">Somente dentro de áreas protegidas</span></label>
+              <button id="logs-filter" class="button secondary" data-i18n="logs_filter_apply">Filtrar</button>
+            </div>
+          </div>
+          <p id="logs-error" class="error" hidden></p>
+          <div class="bulk"><span id="logs-summary" class="muted"></span></div>
+          <div class="table-wrap"><table><thead><tr>
+            <th data-i18n="logs_col_time">Horário</th>
+            <th data-i18n="logs_col_kind">Tipo</th>
+            <th data-i18n="logs_col_provider">Fornecedor</th>
+            <th data-i18n="logs_col_region">Região</th>
+            <th data-i18n="logs_col_detail">Detalhe</th>
+            <th data-i18n="logs_col_aircraft">Aeronave</th>
+            <th data-i18n="logs_col_disposition">Disposição</th>
+          </tr></thead><tbody id="logs-body"></tbody></table></div>
+          <div class="actions">
+            <button id="logs-prev" class="button ghost dark" data-i18n="logs_prev">Anterior</button>
+            <button id="logs-next" class="button ghost dark" data-i18n="logs_next">Próxima</button>
           </div>
         </article>
       </section>

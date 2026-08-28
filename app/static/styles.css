@@ -21,3 +21,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .fr24-minimap{display:block;width:100%;max-width:280px;margin-top:8px;background:#f7f2ec;border:1px solid var(--line);border-radius:9px}
 .minimap-area{fill:rgba(23,76,60,.35);stroke:var(--forest);stroke-width:.75}
 .minimap-bounds{fill:none;stroke:var(--burgundy);stroke-width:1.25;stroke-dasharray:5 4}
+.signal.failed{background:#f5d9d6;color:#7c2320}
+.signal.inside{background:#e9f1ec;color:var(--forest)}
+tr.log-row-failed{background:rgba(159,52,47,.07)}
+tr.log-row-failed td:first-child{border-left:3px solid var(--red)}
+.log-aircraft-link{color:var(--ink);text-decoration:underline}
