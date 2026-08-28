@@ -106,11 +106,15 @@ async def _request(
     path: str,
     *,
     params: dict | None = None,
-) -> tuple[dict, dict]:
+    expect: str = "object",
+) -> tuple[dict | list, dict]:
     """One logical FR24 request with bounded retries. Returns (payload, meta)
     where meta has keys latency_ms, retry_count. Raises FR24Failure (with
     .latency_ms/.retry_count set) on unrecoverable failure -- never returns
     None/empty as a substitute for a real failure.
+
+    ``expect`` selects the required top-level JSON shape: "object" (default)
+    or "list" (flight-tracks returns a bare array).
 
     Callers log exactly one fr24_request_log row per logical call (see
     record_fr24_request usage below), with meta["retry_count"] recording how
@@ -136,7 +140,10 @@ async def _request(
             response = await client.request(method, url, params=params, headers=headers)
             response.raise_for_status()
             payload = response.json()
-            if not isinstance(payload, dict):
+            if expect == "list":
+                if not isinstance(payload, list):
+                    raise ValueError(t("err_provider_non_list", _lang()))
+            elif not isinstance(payload, dict):
                 raise ValueError(t("err_provider_non_object", _lang()))
             latency_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
             return payload, {"latency_ms": latency_ms, "retry_count": attempt}
@@ -345,9 +352,15 @@ async def fetch_count(
         payload, meta = await _request(
             client, "GET", "/api/live/flight-positions/count", params=params
         )
-        count_raw = payload.get("count")
+        # Real schema (verified against the live FR24 sandbox):
+        # {"data": [{"record_count": 123}]} -- count lives in data[0].
+        data = payload.get("data") if isinstance(payload, dict) else None
+        first = data[0] if isinstance(data, list) and data else None
+        count_raw = first.get("record_count") if isinstance(first, dict) else None
         if not isinstance(count_raw, (int, float)) or isinstance(count_raw, bool):
-            raise FR24Failure("FR24 Count response missing/invalid 'count' field (schema mismatch)")
+            raise FR24Failure(
+                "FR24 Count response missing/invalid 'data[0].record_count' field (schema mismatch)"
+            )
         count = int(count_raw)
     except FR24Failure as exc:
         record_fr24_request(
@@ -452,15 +465,19 @@ async def fetch_summary_full(
     return results
 
 
-async def fetch_track(client: httpx.AsyncClient, fr24_id: str, *, billing_cycle_id: str) -> dict:
+async def fetch_track(client: httpx.AsyncClient, fr24_id: str, *, billing_cycle_id: str) -> list:
     """Manual, authenticated-action-only in the admin UI (a later chunk) --
-    this function only performs the HTTP call and records its cost."""
+    this function only performs the HTTP call and records its cost.
+
+    Real schema (verified against the live FR24 sandbox): a top-level array
+    of flight objects, each {"fr24_id": ..., "tracks": [...]} -- credits are
+    billed per returned flight (FLIGHTRADAR_API.md sec. 12)."""
     params = {"flight_id": fr24_id}
     try:
-        payload, meta = await _request(client, "GET", "/api/flight-tracks", params=params)
-        rows = payload.get("data")
-        if not isinstance(rows, list):
-            raise FR24Failure("FR24 Tracks response missing/invalid 'data' field (schema mismatch)")
+        payload, meta = await _request(
+            client, "GET", "/api/flight-tracks", params=params, expect="list"
+        )
+        rows = payload
     except FR24Failure as exc:
         record_fr24_request(
             billing_cycle_id,

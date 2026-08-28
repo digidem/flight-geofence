@@ -1030,7 +1030,15 @@ async def fr24_track_fetch(request: Request, event_id: str, payload: TrackFetchR
                 )
         except FR24Failure as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        records_returned = len(track_payload.get("data") or [])
+        # flight-tracks returns a bare array of flights; credits bill per flight,
+        # so records_returned stays the flight count. Track points are reported
+        # separately -- they are what the operator actually wanted to see.
+        records_returned = len(track_payload)
+        track_points = sum(
+            len(flight.get("tracks") or [])
+            for flight in track_payload
+            if isinstance(flight, dict)
+        )
         saved = save_fr24_track(
             event_id=event_id,
             aircraft_hex=event["aircraft_hex"],
@@ -1051,6 +1059,7 @@ async def fr24_track_fetch(request: Request, event_id: str, payload: TrackFetchR
             "event_id": event_id,
             "fr24_id": fr24_id,
             "records_returned": records_returned,
+            "track_points": track_points,
             "estimated_credits": fr24_credits.estimate_track_credits(records_returned),
             "created_at": stored["created_at"] if stored else "",
         }

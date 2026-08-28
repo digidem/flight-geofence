@@ -427,7 +427,8 @@ def test_fetch_count_returns_count():
     _setup_key()
 
     def handler(request):
-        return _json_response({"count": 5})
+        # Real schema (live sandbox): {"data": [{"record_count": 123}]}
+        return _json_response({"data": [{"record_count": 5}]})
 
     result = asyncio.run(fetch_count(_client(handler), **COUNT_KWARGS))
     assert result == 5
@@ -453,7 +454,7 @@ def test_fetch_count_boolean_count_raises_schema_mismatch():
     _setup_key()
 
     def handler(request):
-        return _json_response({"count": True})
+        return _json_response({"data": [{"record_count": True}]})
 
     with pytest.raises(FR24Failure):
         asyncio.run(fetch_count(_client(handler), **COUNT_KWARGS))
@@ -499,18 +500,20 @@ def test_fetch_track_returns_payload():
     _setup_key()
 
     def handler(request):
-        return _json_response({"data": [{"lat": -1.0, "lon": -55.0}]})
+        # Real schema (live sandbox): top-level array of {fr24_id, tracks}.
+        return _json_response([{"fr24_id": "fr24-abc", "tracks": [{"lat": -1.0, "lon": -55.0}]}])
 
     result = asyncio.run(
         fetch_track(_client(handler), "fr24-abc", billing_cycle_id="2026-07")
     )
-    assert "data" in result
+    assert isinstance(result, list)
+    assert result[0]["tracks"]
     rows = _fr24_log_rows(outcome="ok")
     assert len(rows) == 1
     assert rows[0]["estimated_credits"] == 40
 
 
-def test_fetch_track_missing_data_key_raises_schema_mismatch():
+def test_fetch_track_non_list_raises_schema_mismatch():
     _setup_key()
 
     def handler(request):

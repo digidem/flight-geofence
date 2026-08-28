@@ -836,7 +836,7 @@ def save_fr24_track(
     event_id: str,
     aircraft_hex: str,
     fr24_id: str,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | list[Any],
     requested_by: str,
     estimated_credits: int,
 ) -> bool:

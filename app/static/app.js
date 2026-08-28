@@ -1163,6 +1163,7 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
     if (refs) {
       refs.textContent = t("fr24_track_success")
         .replace("{records}", String(done.records_returned ?? ""))
+        .replace("{points}", String(done.track_points ?? ""))
         .replace("{credits}", String(done.estimated_credits ?? ""));
     }
   } catch (error) {

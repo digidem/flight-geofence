@@ -242,6 +242,7 @@ TRANSLATIONS = {
         # Provider errors
         "err_provider_daily_limit": "Limite diário de 500 requisições HTTP do Airplanes.live atingido",
         "err_provider_non_object": "O provedor retornou uma resposta JSON que não é um objeto",
+        "err_provider_non_list": "O provedor retornou uma resposta JSON que não é uma lista",
         "err_provider_request_failed": "Solicitação ao provedor falhou",
         "err_adsbexchange_key_missing": "Chave da API ADS-B Exchange ausente",
         "err_unsupported_readsb_provider": "Provedor readsb não suportado",
@@ -321,7 +322,7 @@ TRANSLATIONS = {
         "fr24_track_cost": "Custo estimado: {credits} créditos",
         "fr24_track_confirm": "Buscar o rastreamento deste voo? Custo estimado: ~{credits} créditos.",
         "fr24_track_fetching": "Buscando rastreamento…",
-        "fr24_track_success": "Rastreamento armazenado: {records} pontos, {credits} créditos.",
+        "fr24_track_success": "Rastreamento armazenado: {records} voo(s), {points} pontos, {credits} créditos.",
         "fr24_track_error": "Falha ao buscar rastreamento: {detail}",
         "fr24_track_blocked_missing": "Este evento não possui ID da Flightradar24; não há rastreamento para buscar.",
         "fr24_track_blocked_fetched": "O rastreamento deste evento já foi buscado.",
@@ -611,6 +612,7 @@ TRANSLATIONS = {
         # Provider errors
         "err_provider_daily_limit": "Airplanes.live daily limit of 500 HTTP requests reached",
         "err_provider_non_object": "Provider returned a non-object JSON response",
+        "err_provider_non_list": "Provider returned a non-list JSON response",
         "err_provider_request_failed": "Provider request failed",
         "err_adsbexchange_key_missing": "ADS-B Exchange API key is missing",
         "err_unsupported_readsb_provider": "Unsupported readsb provider",
@@ -712,7 +714,7 @@ TRANSLATIONS = {
         "fr24_track_cost": "Estimated cost: {credits} credits",
         "fr24_track_confirm": "Fetch this flight's track? Estimated cost: ~{credits} credits.",
         "fr24_track_fetching": "Fetching track…",
-        "fr24_track_success": "Track stored: {records} points, {credits} credits.",
+        "fr24_track_success": "Track stored: {records} flight(s), {points} track points, {credits} credits.",
         "fr24_track_error": "Track fetch failed: {detail}",
         "fr24_track_blocked_missing": "This event has no Flightradar24 ID, so there is no track to fetch.",
         "fr24_track_blocked_fetched": "The track for this event was already fetched.",

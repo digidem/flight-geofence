@@ -89,18 +89,26 @@ def _seed_fr24_id(
     return fr24_id
 
 
-def _track_payload(rows: int = 2) -> dict:
-    return {
-        "data": [
-            {
-                "lat": -1.5 - i * 0.01,
-                "lon": -55.5 - i * 0.01,
-                "ts": 1756000000 + i,
-                "fr24_id": "fr24-test-1",
-            }
-            for i in range(rows)
-        ]
-    }
+def _track_payload(rows: int = 2) -> list:
+    # Real flight-tracks schema (live sandbox): top-level array of
+    # {fr24_id, tracks: [...]} flight objects -- credits are per flight.
+    return [
+        {
+            "fr24_id": "fr24-test-1",
+            "tracks": [
+                {
+                    "timestamp": 1756000000 + i,
+                    "lat": -1.5 - i * 0.01,
+                    "lon": -55.5 - i * 0.01,
+                    "alt": 30000,
+                    "gspeed": 210,
+                    "track": 250,
+                    "callsign": "TST01",
+                }
+            ],
+        }
+        for i in range(rows)
+    ]
 
 
 def _install_transport(monkeypatch, handler) -> dict:
@@ -292,7 +300,8 @@ def test_successful_fetch_persists_and_audits(monkeypatch):
     assert body["fetched"] is True
     assert body["event_id"] == event_id
     assert body["fr24_id"] == fr24_id
-    assert body["records_returned"] == 2
+    assert body["records_returned"] == 2  # flights -- credits bill per flight
+    assert body["track_points"] == 2  # one track point per fixture flight
     assert body["estimated_credits"] == estimate_track_credits(2) == 80
     assert body["created_at"]
 
