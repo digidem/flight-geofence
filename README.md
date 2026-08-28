@@ -756,8 +756,10 @@ bash scripts/fr24_sandbox_simulate.sh
 ```
 
 What lands in `sandbox-artifacts/` (gitignored): `settings-backup.json`
-(pre-run snapshot), `0N-*.png` (dashboard, areas, events, settings, FR24 tab,
-event-detail pages), `simulate.log`. The stack stays up afterwards — the
+(pre-run snapshot) and `0N-*.png` (dashboard, areas, events, settings, FR24
+tab, event-detail pages). The script logs to stdout rather than to a file;
+redirect it yourself (`bash scripts/fr24_sandbox_simulate.sh 2>&1 | tee
+sandbox-artifacts/simulate.log`) if you want a transcript. The stack stays up afterwards — the
 script prints a UI tour of what to click at `http://127.0.0.1:8081`.
 
 Determinism tip: the background poll loop runs every 300 s regardless

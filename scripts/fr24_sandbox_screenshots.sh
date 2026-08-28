@@ -55,8 +55,17 @@ cleanup() {
     # immediately loses the race and leaves the directory behind.
     wait "$CHROME_PID" 2>/dev/null || true
   fi
+  # Chrome's helper processes keep recreating files under the profile for a
+  # moment after the parent exits, so a single rm can walk a directory that is
+  # being repopulated and leave it behind. Retry briefly; never fail the run.
   if [ -n "${PROFILE_DIR:-}" ]; then
-    rm -rf "$PROFILE_DIR" 2>/dev/null || true
+    attempt=0
+    while [ "$attempt" -lt 5 ] && [ -d "$PROFILE_DIR" ]; do
+      rm -rf "$PROFILE_DIR" 2>/dev/null || true
+      [ -d "$PROFILE_DIR" ] || break
+      attempt=$((attempt + 1))
+      sleep 1
+    done
   fi
 }
 trap cleanup EXIT INT TERM
