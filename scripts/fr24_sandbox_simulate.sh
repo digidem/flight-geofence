@@ -16,7 +16,6 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-PROJECT=flight-geofence-sandbox
 ENV_FILE=.env.sandbox
 BASE_URL="${FR24_SANDBOX_BASE_URL:-http://127.0.0.1:8081}"
 
