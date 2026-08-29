@@ -33,6 +33,7 @@ from .database import (
     cleanup_logs,
     cleanup_provider_events,
     cleanup_stale_states,
+    count_events,
     credits_used_this_cycle,
     database_ok,
     delete_fr24_cluster,
@@ -663,12 +664,18 @@ async def email_test(request: Request):
 async def events_get(
     request: Request,
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     event_type: str = "",
     review_status: str = "",
 ):
     require_auth(request)
-    return {"events": list_events(limit, event_type, review_status)}
-
+    events = list_events(limit, event_type, review_status, offset)
+    try:
+        total = count_events(event_type, review_status)
+    except Exception as exc:
+        logger.warning("events count query failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to count events") from exc
+    return {"events": events, "total": total}
 
 @app.post("/api/events/{event_id}/review")
 async def event_review(request: Request, event_id: str, payload: ReviewPayload):

@@ -1500,11 +1500,7 @@ def review_event(event_id: str, status: str, notes: str = "") -> bool:
     return cursor.rowcount > 0
 
 
-def list_events(
-    limit: int = 100,
-    event_type: str = "",
-    review_status: str = "",
-) -> list[dict[str, Any]]:
+def _events_where(event_type: str, review_status: str) -> tuple[str, list[Any]]:
     where: list[str] = []
     params: list[Any] = []
     if event_type in {"PROBABLE_STOP", "DISAPPEARED"}:
@@ -1514,13 +1510,29 @@ def list_events(
         where.append("review_status=?")
         params.append(review_status)
     clause = " WHERE " + " AND ".join(where) if where else ""
+    return clause, params
+
+
+def count_events(event_type: str = "", review_status: str = "") -> int:
+    clause, params = _events_where(event_type, review_status)
+    with db() as conn:
+        row = conn.execute(f"SELECT COUNT(*) FROM events{clause}", params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def list_events(
+    limit: int = 100,
+    event_type: str = "",
+    review_status: str = "",
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    clause, params = _events_where(event_type, review_status)
     with db() as conn:
         rows = conn.execute(
-            f"SELECT * FROM events{clause} ORDER BY occurred_at DESC LIMIT ?",
-            [*params, min(max(limit, 1), 500)],
+            f"SELECT * FROM events{clause} ORDER BY occurred_at DESC LIMIT ? OFFSET ?",
+            [*params, min(max(limit, 1), 500), max(offset, 0)],
         ).fetchall()
     return [_event_from_row(row) for row in rows]
-
 
 
 

@@ -213,6 +213,7 @@ main {
   .nav-overflow {
     display: block !important;
   }
+  .fr24-minimap{max-width:100%}
 }
 @media (min-width: 768px) {
   .grid.two {

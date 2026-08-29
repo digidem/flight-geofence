@@ -30,6 +30,10 @@ const appState = {
   areas: [],
   events: [],
   areaFilter: { search: "", category: "", selected: "" },
+  areasOffset: 0,
+  areasLimit: 50,
+  reviewsOffset: 0,
+  reviewsLimit: 50,
   logsFilter: { kind: "all", provider: "", hex: "", inside: false },
   logsOffset: 0,
   language: "en",
@@ -266,10 +270,13 @@ function formatTime(value) {
       minute: "2-digit",
       hourCycle: "h23",
       timeZone: appState.timezone || "UTC",
+      timeZoneName: "short",
     }).formatToParts(dt);
     const get = (type) => parts.find((part) => part.type === type)?.value ?? "";
     const dayName = get("weekday").charAt(0).toUpperCase() + get("weekday").slice(1);
-    return `${dayName} ${get("day")}/${get("month")}/${get("year")}${t("time_at")}${get("hour")}:${get("minute")}`;
+    const tzRaw = get("timeZoneName");
+    const tz = tzRaw ? ` · ${tzRaw}` : "";
+    return `${dayName} ${get("day")}/${get("month")}/${get("year")}${t("time_at")}${get("hour")}:${get("minute")}${tz}`;
   } catch {
     return value;
   }
@@ -331,7 +338,9 @@ function fr24CoverageMinimap(cluster) {
   const bw = (px(bounds.east) - px(bounds.west)).toFixed(2);
   const bh = (py(bounds.south) - py(bounds.north)).toFixed(2);
   const rect = `<rect class="minimap-bounds" x="${bx0}" y="${by0}" width="${bw}" height="${bh}"/>`;
-  return `<svg class="fr24-minimap" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("fr24_minimap_aria"))}">${areas}${rect}</svg>`;
+  const svg = `<svg class="fr24-minimap" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("fr24_minimap_aria"))}">${areas}${rect}</svg>`;
+  const legend = `<div class="minimap-legend"><span class="legend-area">— território</span><span class="legend-bounds">- - limites FR24</span></div>`;
+  return `${svg}${legend}`;
 }
 
 function fr24ClusterCard(cluster) {
@@ -966,7 +975,9 @@ async function saveSelection(payload) {
 async function loadAreas() {
   const container = $("#areas-body");
   return withLoading(null, container, async () => {
-    const params = new URLSearchParams({ ...appState.areaFilter, limit: "500" });
+    const limit = appState.areasLimit || 50;
+    const offset = appState.areasOffset || 0;
+    const params = new URLSearchParams({ ...appState.areaFilter, limit: String(limit), offset: String(offset) });
     const [result, status] = await Promise.all([
       api(`/api/areas?${params}`),
       api("/api/status"),
@@ -974,6 +985,20 @@ async function loadAreas() {
     appState.areas = result.items;
     renderAreaStatus(status);
     $("#area-summary").textContent = `${result.total} ${t("areas_matching")}`;
+    // pagination info · IntersectionObserver guard as comment: virtualized scroll
+    // could replace prev/next with IntersectionObserver on sentinel row, but
+    // prev/next keeps impl simple and avoids jank.
+    const total = result.total ?? 0;
+    const paginationInfo = $("#areas-pagination-info");
+    if (paginationInfo) {
+      const start = total === 0 ? 0 : offset + 1;
+      const end = Math.min(offset + limit, total);
+      paginationInfo.textContent = total ? `${start}–${end} / ${total}` : "";
+    }
+    const prevBtn = $("#areas-prev");
+    const nextBtn = $("#areas-next");
+    if (prevBtn) prevBtn.disabled = offset <= 0;
+    if (nextBtn) nextBtn.disabled = total <= offset + limit;
     $("#areas-body").innerHTML = result.items.length
       ? result.items
           .map(
@@ -1032,13 +1057,35 @@ async function loadReviews() {
   const container = $("#review-list");
   return withLoading(null, container, async () => {
     const filter = $("#review-filter").value;
-    const result = await api(`/api/events?limit=200&review_status=${encodeURIComponent(filter)}`);
-    appState.events = result.events;
-    $("#review-list").innerHTML = result.events.length
-      ? result.events.map(reviewCard).join("")
+    const limit = appState.reviewsLimit || 50;
+    const offset = appState.reviewsOffset || 0;
+    const result = await api(`/api/events?limit=${limit}&offset=${offset}&review_status=${encodeURIComponent(filter)}`);
+    // backwards compat: older API returns {events:[]}, newer may return {events:[], total}
+    const events = result.events || [];
+    appState.events = events;
+    const total = typeof result.total === "number" ? result.total : null;
+    const prevBtn = $("#review-prev");
+    const nextBtn = $("#review-next");
+    const info = $("#review-pagination-info");
+    if (prevBtn) prevBtn.disabled = offset <= 0;
+    if (nextBtn) {
+      if (total !== null) nextBtn.disabled = total <= offset + limit;
+      else nextBtn.disabled = events.length < limit;
+    }
+    if (info) {
+      if (total !== null) {
+        const start = total === 0 ? 0 : offset + 1;
+        const end = Math.min(offset + limit, total);
+        info.textContent = total ? `${start}–${end} / ${total}` : "";
+      } else {
+        info.textContent = events.length ? `${offset + 1}–${offset + events.length}` : "";
+      }
+    }
+    $("#review-list").innerHTML = events.length
+      ? events.map(reviewCard).join("")
       : `<p class="muted">${t("review_no_events")}</p>`;
   $$(".review-card").forEach((card, index) => {
-    card.querySelector(".review-status").value = result.events[index].review_status;
+    card.querySelector(".review-status").value = events[index].review_status;
     const saveBtn = card.querySelector(".review-save");
     saveBtn.addEventListener("click", async () => {
       // ensure inline error container exists
@@ -1526,12 +1573,14 @@ $("#test-email").addEventListener("click", (event) => runAction(event.currentTar
 $("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#dashboard-events"), loadStatus));
 $("#area-filter").addEventListener("click", (event) => {
   appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
+  appState.areasOffset = 0;
   withLoading(event.currentTarget, $("#areas-body"), loadAreas);
 });
 const debouncedAreaSearch = debounce(() => {
   try {
     const val = $("#area-search") ? $("#area-search").value : "";
     appState.areaFilter.search = val;
+    appState.areasOffset = 0;
     loadAreas();
   } catch {}
 }, 300);
@@ -1542,6 +1591,7 @@ try {
       event.preventDefault();
       try {
         appState.areaFilter.search = event.currentTarget.value;
+        appState.areasOffset = 0;
         loadAreas();
       } catch {}
     }
@@ -1549,6 +1599,26 @@ try {
 } catch {}
 $("#select-all-filtered").addEventListener("click", () => bulkFiltered(true));
 $("#deselect-all-filtered").addEventListener("click", () => bulkFiltered(false));
+$("#areas-prev")?.addEventListener("click", (event) => {
+  appState.areasOffset = Math.max(0, (appState.areasOffset || 0) - (appState.areasLimit || 50));
+  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+});
+$("#areas-next")?.addEventListener("click", (event) => {
+  appState.areasOffset = (appState.areasOffset || 0) + (appState.areasLimit || 50);
+  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+});
+$("#review-filter")?.addEventListener("change", () => {
+  appState.reviewsOffset = 0;
+  loadReviews();
+});
+$("#review-prev")?.addEventListener("click", (event) => {
+  appState.reviewsOffset = Math.max(0, (appState.reviewsOffset || 0) - (appState.reviewsLimit || 50));
+  withLoading(event.currentTarget, $("#review-list"), loadReviews);
+});
+$("#review-next")?.addEventListener("click", (event) => {
+  appState.reviewsOffset = (appState.reviewsOffset || 0) + (appState.reviewsLimit || 50);
+  withLoading(event.currentTarget, $("#review-list"), loadReviews);
+});
 $("#review-refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#review-list"), loadReviews));
 $("#logs-filter")?.addEventListener("click", (event) => {
   appState.logsFilter = {
@@ -1749,6 +1819,186 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
     if (resultBox) resultBox.textContent = message || t("fr24_track_error").replace("{detail}", detail);
   }
 });
+// P2-01 Cmd+K palette — vanilla, no deps, fuzzy via includes lowercased
+(function initCmdPalette(){
+  const palette = $("#cmd-palette");
+  const input = $("#cmd-input");
+  const results = $("#cmd-results");
+  if (!palette || !input || !results) return;
+  const VIEWS = [
+    {id:"dashboard", label:"Dashboard", i18n:"nav_dashboard"},
+    {id:"areas", label:"Áreas protegidas", i18n:"nav_areas"},
+    {id:"events", label:"Revisar eventos", i18n:"nav_events"},
+    {id:"settings", label:"Configurações", i18n:"nav_settings"},
+    {id:"fr24", label:"FR24", i18n:"nav_fr24"},
+    {id:"logs", label:"Logs", i18n:"nav_logs"},
+  ];
+  let prevFocus = null;
+  function openPalette(){
+    try{ prevFocus = document.activeElement; }catch{ prevFocus = null; }
+    palette.hidden = false;
+    input.value = "";
+    renderPalette("");
+    try{ input.focus(); }catch{}
+  }
+  function closePalette(){
+    palette.hidden = true;
+    try{ input.blur(); }catch{}
+    const toFocus = prevFocus;
+    prevFocus = null;
+    if(toFocus && typeof toFocus.focus === "function"){
+      try{ toFocus.focus(); }catch{}
+    }
+  }
+  function switchToView(viewId){
+    const tab = document.querySelector(`.tab[data-view="${viewId}"]`);
+    if (tab) tab.click();
+    else {
+      $$(".tab").forEach((t)=>{t.classList.remove("active"); try{t.setAttribute("aria-selected","false")}catch{}});
+      const targetTab = $(`#tab-${viewId}`); if(targetTab){targetTab.classList.add("active"); try{targetTab.setAttribute("aria-selected","true")}catch{}}
+      $$(".view").forEach((v)=>v.classList.remove("active"));
+      const target = $(`#view-${viewId}`); if(target) target.classList.add("active");
+    }
+  }
+  function activateItem(el, query){
+    const kind = el.dataset.kind;
+    if(kind==="view"){
+      switchToView(el.dataset.view);
+    } else if(kind==="area"){
+      const area = (appState.areas||[]).find((a)=>a.id===el.dataset.area);
+      const q2 = area ? area.name : query;
+      appState.areaFilter.search = q2;
+      const searchBox = $("#area-search");
+      if(searchBox) searchBox.value = q2;
+      appState.areasOffset = 0;
+      switchToView("areas");
+      loadAreas();
+    } else if(kind==="event"){
+      const eid = el.dataset.event;
+      if(eid) {
+        window.location.hash = `#/events/${eid}`;
+        try{ handleHashRoute(); }catch{}
+      }
+    }
+    closePalette();
+  }
+  function renderPalette(q){
+    const query = (q||"").trim().toLowerCase();
+    const items = [];
+    // views
+    VIEWS.forEach((v)=>{
+      const label = (t(v.i18n) !== v.i18n ? t(v.i18n) : v.label).toLowerCase();
+      if(!query || v.id.includes(query) || label.includes(query) || v.label.toLowerCase().includes(query)) {
+        items.push({kind:"view", label: t(v.i18n) || v.label, viewId: v.id});
+      }
+    });
+    // areas — up to 8
+    (appState.areas||[]).forEach((a)=>{
+      if(!query || String(a.name||"").toLowerCase().includes(query)){
+        if(items.length<20) items.push({kind:"area", label: a.name, areaId: a.id});
+      }
+    });
+    // events — hex match
+    (appState.events||[]).forEach((e)=>{
+      const hex = String(e.aircraft_hex||"").toLowerCase();
+      const id = String(e.id||"").toLowerCase();
+      if(query && (hex.includes(query) || id.includes(query))){
+        if(items.length<20) items.push({kind:"event", label: `${e.aircraft_hex} · ${e.event_type}`, eventId: e.id});
+      }
+    });
+    if(!query){
+      // when empty, show views only (already) — keep capped
+    }
+    if(items.length===0){
+      results.innerHTML = `<p class="muted cmd-empty">No results</p>`;
+      return;
+    }
+    results.innerHTML = items.slice(0,12).map((it, idx)=>{
+      const kindLabel = it.kind==="view" ? "View" : it.kind==="area" ? "Area" : "Event";
+      return `<div role="option" id="cmd-opt-${idx}" class="cmd-result" tabindex="-1" data-kind="${it.kind}" data-view="${it.viewId||""}" data-area="${it.areaId||""}" data-event="${it.eventId||""}"><span class="cmd-kind">${escapeHtml(kindLabel)}</span><br><span>${escapeHtml(it.label)}</span></div>`;
+    }).join("");
+    results.querySelectorAll(".cmd-result").forEach((el)=>{
+      el.addEventListener("click", ()=> activateItem(el, query));
+      el.addEventListener("keydown", (ev)=>{
+        if(ev.key==="Enter" || ev.key===" "){
+          ev.preventDefault();
+          activateItem(el, query);
+        }
+      });
+    });
+  }
+  input.addEventListener("input", ()=> renderPalette(input.value));
+  input.addEventListener("keydown", (e)=>{
+    if(e.key==="Escape"){ e.preventDefault(); closePalette(); }
+    if(e.key==="Enter"){
+      const first = results.querySelector(".cmd-result");
+      if(first){ e.preventDefault(); first.click(); }
+    }
+    if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+      const opts = [...results.querySelectorAll(".cmd-result")];
+      if(!opts.length) return;
+      e.preventDefault();
+      const idx = opts.indexOf(document.activeElement);
+      let next = 0;
+      if(e.key==="ArrowDown") next = idx < opts.length-1 ? idx+1 : 0;
+      else next = idx > 0 ? idx-1 : opts.length-1;
+      try{ opts[next].focus(); }catch{}
+    }
+  });
+  palette.addEventListener("click", (e)=>{
+    if(e.target===palette) closePalette();
+  });
+  // Focus trap: keep Tab/Shift+Tab cycling inside palette (input <-> results)
+  palette.addEventListener("keydown", (e)=>{
+    if(e.key==="Tab"){
+      const opts = [...results.querySelectorAll(".cmd-result")];
+      const focusables = [input, ...opts];
+      if(focusables.length===0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length-1];
+      const active = document.activeElement;
+      if(e.shiftKey && active===first){
+        e.preventDefault();
+        try{ last.focus(); }catch{}
+      } else if(!e.shiftKey && active===last){
+        e.preventDefault();
+        try{ first.focus(); }catch{}
+      }
+    } else if(e.key==="Escape"){
+      e.preventDefault();
+      closePalette();
+    } else if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+      // allow arrow navigation when focus is on an option itself
+      if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("cmd-result")){
+        const opts = [...results.querySelectorAll(".cmd-result")];
+        if(!opts.length) return;
+        e.preventDefault();
+        const idx = opts.indexOf(document.activeElement);
+        let next = 0;
+        if(e.key==="ArrowDown") next = idx < opts.length-1 ? idx+1 : 0;
+        else next = idx > 0 ? idx-1 : opts.length-1;
+        try{ opts[next].focus(); }catch{}
+      }
+    }
+  });
+  try{
+    if(typeof document !== "undefined" && typeof document.addEventListener === "function"){
+      document.addEventListener("keydown", (e)=>{
+        const isK = (e.key==="k" || e.key==="K");
+        const mod = e.metaKey || e.ctrlKey;
+        if(mod && isK){
+          e.preventDefault();
+          if(palette.hidden) openPalette(); else closePalette();
+          return;
+        }
+        if(e.key==="Escape" && !palette.hidden){
+          e.preventDefault();
+          closePalette();
+        }
+      });
+    }
+  }catch{}
+})();
 init().catch((error) => {
   $("#login-error").textContent = error.message;
   showLogin();
