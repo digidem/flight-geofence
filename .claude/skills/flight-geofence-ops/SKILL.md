@@ -1,6 +1,6 @@
 ---
 name: flight-geofence-ops
-description: "Release, deploy and verify flight-geofence, and drive the FR24 sandbox stack. The env-scrub trap that wipes databases, the release file list, the production runbook, and the standing security exposure. Load before running tests, cutting a release, deploying, or touching the sandbox."
+description: "Release, deploy and verify flight-geofence, and drive the FR24 sandbox stack. The env-scrub trap that wipes databases, the release file list, the production runbook, and how the TLS/proxy deploy works. Load before running tests, cutting a release, deploying, or touching the sandbox."
 ---
 
 # Operating flight-geofence
@@ -75,6 +75,11 @@ docker inspect edt-cloud-flight-geofence-1 --format "restarts={{.RestartCount}} 
 /readyz  ->  {"status":"ready","version":"X.Y.Z"}
 ```
 
+The production database is **`/data/runtime/flight_alerts.db`**, not
+`/data/flight_alerts.db`. `sqlite3.connect` on the wrong path silently creates an
+empty file and reports `no such table: poll_runs`, which reads like data loss.
+Open it read-only: `sqlite3.connect("file:...?mode=ro", uri=True)`.
+
 For an authenticated check: POST `/api/auth/login` with
 `{"password": os.environ["ADMIN_PASSWORD"]}` read **inside** the container, take
 `csrf_token` plus the first `Set-Cookie`, send both. Never echo `ADMIN_PASSWORD`
@@ -104,21 +109,39 @@ Leave the healthy container running between lanes; `make bump-version` touches
 `Dockerfile` `APP_VERSION` and busts the uv layer cache, making the next
 `compose up --build` cold (~12 min).
 
-## Standing production security exposure (unresolved)
+## Production networking (resolved 2026-08-29)
 
-The dashboard is published on `0.0.0.0:8085` over **plain HTTP** and is reachable
-from the internet. `ufw` does not cover Docker-published ports (Docker's iptables
-rules bypass it), and Caddy does not front this service.
-`validate_runtime_security` correctly computes the violation
-(`bind_address=0.0.0.0`, `session_https_only=False`) but production sets
-`ALLOW_INSECURE_DEFAULTS=true`, which suppresses the refusal the app would
-otherwise raise. Admin password crosses the network in clear text.
+The dashboard is served at **https://voos.earthdefenderstoolkit.com**, TLS
+terminated by the stack's `nginx-proxy` + `acme-companion` pair (**not** Caddy).
+No host port is published: `8085:8080` is gone, so the app is reachable only
+through the proxy on the compose network.
 
-Fix, in this order — reversing it stops the container booting:
-1. publish on `127.0.0.1:8085:8080` and route through Caddy with TLS;
-2. then set `SESSION_HTTPS_ONLY=true` and remove `ALLOW_INSECURE_DEFAULTS`.
+Config lives in `../edt-cloud/docker-compose.yml`, and the deploy path is
+**edit locally, push, pull on the host, `compose up`** — never edit the server
+copy in place. Adding a service to the proxy is four env vars:
+`VIRTUAL_HOST`, `VIRTUAL_PORT` (8080 here), `LETSENCRYPT_HOST`,
+`LETSENCRYPT_EMAIL`. The domain comes from `${DOMAIN_FLIGHT_GEOFENCE}` in the
+host's `.env`, which is **not** in git — reused for `TRUSTED_HOSTS` too, so
+changing it moves both.
 
-Reported and awaiting the operator's decision — do not change production
-networking without explicit approval; it takes the dashboard offline for current users.
+With TLS in front, `SESSION_HTTPS_ONLY=true` and `ALLOW_INSECURE_DEFAULTS` is
+gone; `validate_runtime_security` now passes on its own merits.
+`BIND_ADDRESS=0.0.0.0` stays — the proxy reaches the container over the docker
+network. Order matters: publish behind the proxy **first**, flip the cookie flag
+second, or the container refuses to boot.
+
+`FORWARDED_ALLOW_IPS: "*"` is set so uvicorn trusts the proxy's
+`X-Forwarded-For`. Without it `_client_key` keys on the proxy container's IP and
+the 8-failures/15-min login throttle becomes global — one attacker locks out
+everyone. Safe only because no host port is published.
+
+**The server copy drifts.** The image pin, `mem_limit` and the FR24 key
+passthrough were live on the host but never committed. Before pulling, diff the
+server's `docker-compose.yml` against git and fold anything real into the commit,
+or the pull silently reverts production.
+
+**Never `. ./.env` in a shell.** `FLIGHT_GEOFENCE_FR24_API_KEY` contains a `|`,
+so sourcing it pipes the token into the shell as a command and prints half the
+secret in the error. Read values with `grep`/`cut`, or let compose substitute.
 
 Related: [[flight-geofence-mission]], [[flight-geofence-diagnostics]]
