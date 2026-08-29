@@ -14,3 +14,5 @@ data/
 .mimocode/
 .env.sandbox
 sandbox-artifacts/
+local/
+local/ux-review-baseline/
