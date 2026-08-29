@@ -48,15 +48,15 @@ check:
 
 a11y:
 	uv run python -m pytest -q
-	@if npx --yes axe-core --version >/dev/null 2>&1; then \
+	@if npx --no-install axe-core --version >/dev/null 2>&1; then \
 		echo "axe-core found — running axe checks (add real CLI wiring as needed)"; \
-		npx --yes axe-core --version; \
+		npx --no-install axe-core --version; \
 	else \
 		echo "skip: axe-core not installed — run 'npm i -D axe-core lighthouse' (requires approval)"; \
 	fi
-	@if npx --yes lighthouse --version >/dev/null 2>&1; then \
+	@if npx --no-install lighthouse --version >/dev/null 2>&1; then \
 		echo "lighthouse found — to run: npx lighthouse http://127.0.0.1:8081 --chrome-flags=\"--headless\" --output=json --output-path=./lighthouse.json"; \
-		npx --yes lighthouse --version; \
+		npx --no-install lighthouse --version; \
 	else \
 		echo "skip: lighthouse not installed — run 'npm i -D axe-core lighthouse' (requires approval)"; \
 	fi

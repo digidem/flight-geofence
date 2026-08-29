@@ -33,6 +33,7 @@ from .database import (
     cleanup_logs,
     cleanup_provider_events,
     cleanup_stale_states,
+    count_events,
     credits_used_this_cycle,
     database_ok,
     delete_fr24_cluster,
@@ -669,22 +670,11 @@ async def events_get(
 ):
     require_auth(request)
     events = list_events(limit, event_type, review_status, offset)
-    # total for pagination — cheap count query with same filter
     try:
-        from .database import db as _db
-        where = []
-        params = []
-        if event_type in {"PROBABLE_STOP", "DISAPPEARED"}:
-            where.append("event_type=?")
-            params.append(event_type)
-        if review_status in {"useful", "noise", "uncertain", "unreviewed"}:
-            where.append("review_status=?")
-            params.append(review_status)
-        clause = " WHERE " + " AND ".join(where) if where else ""
-        with _db() as conn:
-            total = int(conn.execute(f"SELECT COUNT(*) FROM events{clause}", params).fetchone()[0])
-    except Exception:
-        total = len(events)
+        total = count_events(event_type, review_status)
+    except Exception as exc:
+        logger.warning("events count query failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to count events") from exc
     return {"events": events, "total": total}
 
 @app.post("/api/events/{event_id}/review")

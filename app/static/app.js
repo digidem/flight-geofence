@@ -275,7 +275,7 @@ function formatTime(value) {
     const get = (type) => parts.find((part) => part.type === type)?.value ?? "";
     const dayName = get("weekday").charAt(0).toUpperCase() + get("weekday").slice(1);
     const tzRaw = get("timeZoneName");
-    const tz = tzRaw ? ` · ${tzRaw.split(" ").pop()}` : "";
+    const tz = tzRaw ? ` · ${tzRaw}` : "";
     return `${dayName} ${get("day")}/${get("month")}/${get("year")}${t("time_at")}${get("hour")}:${get("minute")}${tz}`;
   } catch {
     return value;
@@ -1833,7 +1833,9 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
     {id:"fr24", label:"FR24", i18n:"nav_fr24"},
     {id:"logs", label:"Logs", i18n:"nav_logs"},
   ];
+  let prevFocus = null;
   function openPalette(){
+    try{ prevFocus = document.activeElement; }catch{ prevFocus = null; }
     palette.hidden = false;
     input.value = "";
     renderPalette("");
@@ -1842,6 +1844,11 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
   function closePalette(){
     palette.hidden = true;
     try{ input.blur(); }catch{}
+    const toFocus = prevFocus;
+    prevFocus = null;
+    if(toFocus && typeof toFocus.focus === "function"){
+      try{ toFocus.focus(); }catch{}
+    }
   }
   function switchToView(viewId){
     const tab = document.querySelector(`.tab[data-view="${viewId}"]`);
@@ -1852,6 +1859,28 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       $$(".view").forEach((v)=>v.classList.remove("active"));
       const target = $(`#view-${viewId}`); if(target) target.classList.add("active");
     }
+  }
+  function activateItem(el, query){
+    const kind = el.dataset.kind;
+    if(kind==="view"){
+      switchToView(el.dataset.view);
+    } else if(kind==="area"){
+      const area = (appState.areas||[]).find((a)=>a.id===el.dataset.area);
+      const q2 = area ? area.name : query;
+      appState.areaFilter.search = q2;
+      const searchBox = $("#area-search");
+      if(searchBox) searchBox.value = q2;
+      appState.areasOffset = 0;
+      switchToView("areas");
+      loadAreas();
+    } else if(kind==="event"){
+      const eid = el.dataset.event;
+      if(eid) {
+        window.location.hash = `#/events/${eid}`;
+        try{ handleHashRoute(); }catch{}
+      }
+    }
+    closePalette();
   }
   function renderPalette(q){
     const query = (q||"").trim().toLowerCase();
@@ -1884,35 +1913,17 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       results.innerHTML = `<p class="muted cmd-empty">No results</p>`;
       return;
     }
-    results.innerHTML = items.slice(0,12).map((it)=>{
+    results.innerHTML = items.slice(0,12).map((it, idx)=>{
       const kindLabel = it.kind==="view" ? "View" : it.kind==="area" ? "Area" : "Event";
-      return `<button class="cmd-result" role="option" data-kind="${it.kind}" data-view="${it.viewId||""}" data-area="${it.areaId||""}" data-event="${it.eventId||""}"><span class="cmd-kind">${escapeHtml(kindLabel)}</span><br><span>${escapeHtml(it.label)}</span></button>`;
+      return `<div role="option" id="cmd-opt-${idx}" class="cmd-result" tabindex="-1" data-kind="${it.kind}" data-view="${it.viewId||""}" data-area="${it.areaId||""}" data-event="${it.eventId||""}"><span class="cmd-kind">${escapeHtml(kindLabel)}</span><br><span>${escapeHtml(it.label)}</span></div>`;
     }).join("");
-    results.querySelectorAll(".cmd-result").forEach((btn)=>{
-      btn.addEventListener("click", ()=>{
-        const kind = btn.dataset.kind;
-        if(kind==="view"){
-          switchToView(btn.dataset.view);
-        } else if(kind==="area"){
-          const label = btn.textContent || "";
-          // extract area name after kind line — use stored areaId to find name fallback to query
-          const area = (appState.areas||[]).find((a)=>a.id===btn.dataset.area);
-          const q2 = area ? area.name : query;
-          appState.areaFilter.search = q2;
-          const searchBox = $("#area-search");
-          if(searchBox) searchBox.value = q2;
-          appState.areasOffset = 0;
-          switchToView("areas");
-          loadAreas();
-        } else if(kind==="event"){
-          const eid = btn.dataset.event;
-          if(eid) {
-            // navigate to event detail via hash
-            window.location.hash = `#/events/${eid}`;
-            try{ handleHashRoute(); }catch{}
-          }
+    results.querySelectorAll(".cmd-result").forEach((el)=>{
+      el.addEventListener("click", ()=> activateItem(el, query));
+      el.addEventListener("keydown", (ev)=>{
+        if(ev.key==="Enter" || ev.key===" "){
+          ev.preventDefault();
+          activateItem(el, query);
         }
-        closePalette();
       });
     });
   }
@@ -1924,19 +1935,51 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       if(first){ e.preventDefault(); first.click(); }
     }
     if(e.key==="ArrowDown" || e.key==="ArrowUp"){
-      // simple focus trap: move focus among results
-      const btns = [...results.querySelectorAll(".cmd-result")];
-      if(!btns.length) return;
+      const opts = [...results.querySelectorAll(".cmd-result")];
+      if(!opts.length) return;
       e.preventDefault();
-      const idx = btns.indexOf(document.activeElement);
+      const idx = opts.indexOf(document.activeElement);
       let next = 0;
-      if(e.key==="ArrowDown") next = idx < btns.length-1 ? idx+1 : 0;
-      else next = idx > 0 ? idx-1 : btns.length-1;
-      try{ btns[next].focus(); }catch{}
+      if(e.key==="ArrowDown") next = idx < opts.length-1 ? idx+1 : 0;
+      else next = idx > 0 ? idx-1 : opts.length-1;
+      try{ opts[next].focus(); }catch{}
     }
   });
   palette.addEventListener("click", (e)=>{
     if(e.target===palette) closePalette();
+  });
+  // Focus trap: keep Tab/Shift+Tab cycling inside palette (input <-> results)
+  palette.addEventListener("keydown", (e)=>{
+    if(e.key==="Tab"){
+      const opts = [...results.querySelectorAll(".cmd-result")];
+      const focusables = [input, ...opts];
+      if(focusables.length===0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length-1];
+      const active = document.activeElement;
+      if(e.shiftKey && active===first){
+        e.preventDefault();
+        try{ last.focus(); }catch{}
+      } else if(!e.shiftKey && active===last){
+        e.preventDefault();
+        try{ first.focus(); }catch{}
+      }
+    } else if(e.key==="Escape"){
+      e.preventDefault();
+      closePalette();
+    } else if(e.key==="ArrowDown" || e.key==="ArrowUp"){
+      // allow arrow navigation when focus is on an option itself
+      if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("cmd-result")){
+        const opts = [...results.querySelectorAll(".cmd-result")];
+        if(!opts.length) return;
+        e.preventDefault();
+        const idx = opts.indexOf(document.activeElement);
+        let next = 0;
+        if(e.key==="ArrowDown") next = idx < opts.length-1 ? idx+1 : 0;
+        else next = idx > 0 ? idx-1 : opts.length-1;
+        try{ opts[next].focus(); }catch{}
+      }
+    }
   });
   try{
     if(typeof document !== "undefined" && typeof document.addEventListener === "function"){

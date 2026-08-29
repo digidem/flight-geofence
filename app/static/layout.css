@@ -222,7 +222,6 @@ main {
   .nav-overflow {
     display: none !important;
   }
-  .fr24-minimap{max-width:280px}
 }
 
 /* Metric-grid responsive: 1col <480, 2col 480-767, 4col >=768 */
