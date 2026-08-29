@@ -1,0 +1,220 @@
+/* layout.css — Structural layout + responsive breakpoints (depends on tokens.css)
+ * Order: tokens.css -> components.css -> layout.css
+ * Media queries use literal px; --bp-* vars are documentation only.
+ */
+
+/* Reset / base */
+[hidden] {
+  display: none !important;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* Login */
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #6b2847, #174c3c);
+  padding: 20px;
+}
+.login-card {
+  width: min(440px, 100%);
+  background: var(--surface);
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+h1 {
+  margin-bottom: 0;
+  letter-spacing: -0.04em;
+}
+
+/* Topbar */
+.topbar {
+  padding: 24px clamp(20px, 5vw, 70px);
+  background: var(--burgundy);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 5px solid #c9905b;
+}
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.badge {
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+/* Tabs */
+.tabs {
+  background: #fff;
+  display: flex;
+  gap: 4px;
+  padding: 8px clamp(16px, 4vw, 60px);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.tab {
+  border: 0;
+  background: transparent;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-weight: 750;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab.active {
+  background: #f0e2e9;
+  color: var(--burgundy);
+}
+
+/* Main / views */
+main {
+  padding: 24px clamp(16px, 4vw, 60px) 60px;
+  max-width: 1500px;
+  margin: auto;
+}
+.view {
+  display: none;
+}
+.view.active {
+  display: block;
+}
+
+/* Grids — base (desktop > 1024) */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 13px;
+  margin-bottom: 18px;
+}
+.grid.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.panel {
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+/* ============================================================
+ * Breakpoints — literal px (vars not valid in @media)
+ * --bp-sm:480px  --bp-md:768px  --bp-lg:1024px (defined in tokens.css)
+ * Order: larger max-width first, then smaller, so narrower wins.
+ * min-width queries for progressive enhancement after max-width.
+ * ============================================================ */
+
+/* Large desktop: <=1024px — subtle padding tighten */
+@media (max-width: 1024px) {
+  main {
+    padding: 20px clamp(16px, 4vw, 40px) 50px;
+  }
+}
+@media (min-width: 1024px) {
+  main {
+    max-width: 1500px;
+  }
+}
+
+/* Tablet: <=900px (legacy) — keep for compat, new 768 rules override after */
+@media (max-width: 900px) {
+  .metric-grid,
+  .grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .form-grid.compact,
+  .provider-tests {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* New: grid.two collapses <768 (max 767), expands >=768 */
+@media (max-width: 767px) {
+  .grid.two {
+    grid-template-columns: 1fr;
+  }
+}
+@media (min-width: 768px) {
+  .grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Metric-grid responsive: 1col <480, 2col 480-767, 4col >=768 */
+@media (max-width: 479px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (min-width: 480px) and (max-width: 767px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 768px) {
+  .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Filters: column <600, row >=600 */
+@media (max-width: 599px) {
+  .filters {
+    flex-direction: column;
+  }
+  .filters input {
+    width: 100%;
+  }
+}
+@media (min-width: 600px) {
+  .filters {
+    flex-direction: row;
+  }
+  .filters input {
+    width: 240px;
+  }
+}
+
+/* Mobile: <=600px (legacy + new) — must come last so it wins at narrow */
+@media (max-width: 600px) {
+  .topbar {
+    align-items: flex-start;
+    gap: 15px;
+  }
+  .metric-grid,
+  .grid.two {
+    grid-template-columns: 1fr;
+  }
+  .tabs {
+    overflow: auto;
+  }
+  .panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
