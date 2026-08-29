@@ -85,6 +85,27 @@ For an authenticated check: POST `/api/auth/login` with
 `csrf_token` plus the first `Set-Cookie`, send both. Never echo `ADMIN_PASSWORD`
 or the FR24 key — pass them via env only.
 
+## The dashboard's session cookie is Secure now
+
+Since the TLS migration, `flight_geofence_session` is `Secure`. `docker exec …
+curl 127.0.0.1:8080` (plain HTTP, inside the container) will log in — the
+response body still returns a CSRF token — but the cookie is silently dropped
+by any HTTP-only client, so a follow-up authenticated request 401s even though
+login "succeeded". Verify auth end-to-end against the real
+`https://voos.earthdefenderstoolkit.com`, not the container loopback.
+
+## Two independent scheduler loops
+
+`polling_loop()` (free providers) and `fr24_polling_loop()` run as separate
+`asyncio.create_task()`s (`app/main.py:353-355`). A stall in one does not block
+the other — seen live: a free-provider cycle ran long (repeated connection-level
+failures against adsb_lol, blank `error_message` because `request_made=False`
+so `record_provider_call` is never called for those attempts — the provider
+call log undercounts true attempts when the failure is below the HTTP layer)
+while FR24 kept polling and completing normally on its own five-minute cadence
+throughout. Don't read a stuck `poll_runs` row as the whole system being down —
+check `fr24_request_log` and the other loop's log lines before escalating.
+
 ## FR24 sandbox stack
 
 Static, schema-identical responses, zero subscription credits. Setup: copy
@@ -139,6 +160,15 @@ everyone. Safe only because no host port is published.
 passthrough were live on the host but never committed. Before pulling, diff the
 server's `docker-compose.yml` against git and fold anything real into the commit,
 or the pull silently reverts production.
+
+**A missing/wrong env var and a missing compose passthrough look identical
+from the app's side.** `RESEND_API_KEY` had the same two-part failure the FR24
+key did: wrong name in `.env` (`RESEND_API` vs `RESEND_API_KEY`) *and* not
+referenced in the service's `environment:` block at all, since this service has
+no `env_file:` — `.env` only feeds `${VAR}` substitution inside the compose
+file itself. Check both before assuming the value made it into the container;
+`GET /api/settings` with `source: environment, locked: true` is the fastest
+way to confirm it actually did.
 
 **Never `. ./.env` in a shell.** `FLIGHT_GEOFENCE_FR24_API_KEY` contains a `|`,
 so sourcing it pipes the token into the shell as a command and prints half the
