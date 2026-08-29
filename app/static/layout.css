@@ -90,6 +90,46 @@ h1 {
   background: #f0e2e9;
   color: var(--burgundy);
 }
+/* Nav overflow (P0-05) */
+.nav-overflow {
+  display: none;
+  position: relative;
+  margin-left: auto;
+  flex: none;
+}
+.overflow-toggle {
+  white-space: nowrap;
+}
+.overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  min-width: 160px;
+  z-index: 10;
+}
+.overflow-menu button[role="menuitem"] {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.overflow-menu button[role="menuitem"]:hover,
+.overflow-menu button[role="menuitem"]:focus-visible {
+  background: #f7f2ec;
+  color: var(--ink);
+  outline: none;
+}
 
 /* Main / views */
 main {
@@ -158,10 +198,28 @@ main {
   .grid.two {
     grid-template-columns: 1fr;
   }
+  .tabs {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  .tabs .tab {
+    padding: 9px 10px;
+    font-size: 0.85rem;
+  }
+  .tabs .tab[data-view="fr24"],
+  .tabs .tab[data-view="logs"] {
+    display: none;
+  }
+  .nav-overflow {
+    display: block !important;
+  }
 }
 @media (min-width: 768px) {
   .grid.two {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nav-overflow {
+    display: none !important;
   }
 }
 
