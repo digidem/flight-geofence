@@ -587,3 +587,186 @@ tr.log-row-failed td:first-child {
   font-size: .78rem;
 }
 
+/* Skip-link (P1-06) */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 2px solid var(--forest);
+  z-index: 1000;
+  text-decoration: none;
+  font-weight: 700;
+}
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+  width: auto;
+  height: auto;
+  overflow: visible;
+}
+
+/* Detail grid (P1-10) + detail table (P1-11) */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 16px;
+  font-size: 14px;
+}
+.detail-grid dt {
+  color: var(--muted);
+  font-weight: 600;
+  padding: 6px 0;
+}
+.detail-grid dd {
+  margin: 0;
+  padding: 6px 0;
+  word-break: break-word;
+}
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table--detail {
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .detail-grid dt {
+    padding-bottom: 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .detail-grid dd {
+    padding-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* Area picker (P1-11) */
+.area-picker {
+  max-height: 220px;
+  overflow: auto;
+}
+
+/* Tap targets (P1-12) */
+input, select, button {
+  min-height: 44px;
+}
+label.check {
+  padding: 6px 0;
+  position: relative;
+}
+button.tab {
+  min-height: 44px;
+}
+.check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+/* Enlarge checkbox hit area via ::before on label.check */
+label.check::before {
+  content: "";
+  position: absolute;
+  inset: -6px -4px;
+}
+label.check.area-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+/* Help tooltip (P1-15) */
+.help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: help;
+  line-height: 1;
+}
+.help-text {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: #f7f2ec;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+.help-text p {
+  margin: 4px 0;
+}
+
+/* Settings stepper (P1-09) */
+.settings-stepper {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  position: sticky;
+  top: 48px;
+  z-index: 4;
+  background: var(--paper);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.settings-stepper button {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 44px;
+}
+.settings-stepper button[aria-selected="true"] {
+  background: var(--forest);
+  color: #fff;
+  border-color: var(--forest);
+}
+.settings-step {
+  display: none;
+}
+.settings-step.active {
+  display: block;
+}
+.settings-step-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.wizard-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.areas-instructions {
+  padding-bottom: 0;
+}
+.detail-back {
+  margin-top: 16px;
+}

@@ -5,6 +5,9 @@ const fallbackTranslations = {
     login_subtitle: "Use a senha configurada como",
     login_button: "Entrar",
     login_password_label: "Senha",
+    login_throttled: "Muitas tentativas — tente novamente em 15 minutos.",
+    login_retry_in: "Tente novamente em 15 minutos.",
+    skip_link: "Pular para o conteúdo",
     app_title: "Flight Geofence Alerts",
     spec_disclaimer_banner: "Sinais não verificados — não constituem prova de pouso, desligamento deliberado, garimpo ilegal ou irregularidade.",
   },
@@ -13,6 +16,9 @@ const fallbackTranslations = {
     login_subtitle: "Use the password configured as",
     login_button: "Log in",
     login_password_label: "Password",
+    login_throttled: "Too many attempts — try again in 15 minutes.",
+    login_retry_in: "Try again in 15 minutes.",
+    skip_link: "Skip to content",
     app_title: "Flight Geofence Alerts",
     spec_disclaimer_banner: "Unverified signals — not proof of landing, deliberate transponder shutdown, illegal mining, or wrongdoing.",
   },
@@ -66,6 +72,32 @@ function updateHtmlLang() {
   document.documentElement.lang = appState.language === "pt" ? "pt-br" : "en";
 }
 
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; fn(...args); }, ms);
+  };
+}
+
+function readLocalPrefs() {
+  try {
+    const lang = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:lang") : null;
+    const tz = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:timezone") : null;
+    if (lang === "pt" || lang === "en") appState.language = lang;
+    if (tz) appState.timezone = tz;
+  } catch {}
+}
+
+function writeLocalPrefs() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("flight-geofence:lang", appState.language);
+      localStorage.setItem("flight-geofence:timezone", appState.timezone);
+    }
+  } catch {}
+}
+
 function isMutation(method) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 }
@@ -85,7 +117,12 @@ async function api(url, options = {}) {
     body = { detail: response.statusText };
   }
   if (response.status === 401) showLogin();
-  if (!response.ok) throw new Error(body.detail || body.error || response.statusText);
+  if (!response.ok) {
+    const msg = body.detail || body.error || response.statusText;
+    const err = new Error(msg);
+    err.status = response.status;
+    throw err;
+  }
   return body;
 }
 
@@ -736,7 +773,7 @@ function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
   const hexLinks = aircraftHexLinks(event.aircraft_hex);
   const hexDisplay = hexLinks.length
-    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(hex)}</a>`
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);
   const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
@@ -776,31 +813,31 @@ async function loadEventDetail(eventId) {
     const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
 
     const rows = [
-      `<tr><td>${t("email_event")}</td><td><strong>${escapeHtml(eventLabel(event.event_type))}</strong></td></tr>`,
-      `<tr><td>${t("email_time")}</td><td>${escapeHtml(formatTime(event.occurred_at))}</td></tr>`,
-      `<tr><td>${t("email_aircraft")}</td><td><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</td></tr>`,
+      `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
+      `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
+      `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
     ];
-    if (event.callsign) rows.push(`<tr><td>${t("email_callsign")}</td><td>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</td></tr>`);
-    if (event.registration) rows.push(`<tr><td>${t("email_registration")}</td><td>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</td></tr>`);
-    if (event.aircraft_type) rows.push(`<tr><td>${t("email_aircraft_type")}</td><td>${escapeHtml(event.aircraft_type)}</td></tr>`);
-    if (event.area_names.length) rows.push(`<tr><td>${t("email_protected_areas")}</td><td>${event.area_names.map(escapeHtml).join(", ")}</td></tr>`);
+    if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
+    if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
+    if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
+    if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
     if (event.latitude != null && event.longitude != null) {
       const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
-      rows.push(`<tr><td>${t("email_last_position")}</td><td>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</td></tr>`);
+      rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
     }
-    if (event.altitude_ft != null) rows.push(`<tr><td>${t("email_altitude")}</td><td>${escapeHtml(String(event.altitude_ft))} ft MSL</td></tr>`);
-    if (event.ground_speed_kt != null) rows.push(`<tr><td>${t("email_ground_speed")}</td><td>${escapeHtml(String(event.ground_speed_kt))} kt</td></tr>`);
-    if (event.provider) rows.push(`<tr><td>${t("email_provider")}</td><td>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</td></tr>`);
-    if (details.source_type) rows.push(`<tr><td>${t("email_source_type")}</td><td>${escapeHtml(details.source_type)}</td></tr>`);
-    if (details.origin) rows.push(`<tr><td>${t("email_origin")}</td><td>${escapeHtml(details.origin)}</td></tr>`);
-    if (details.destination) rows.push(`<tr><td>${t("email_destination")}</td><td>${escapeHtml(details.destination)}</td></tr>`);
-    rows.push(`<tr><td>${t("email_reason")}</td><td>${escapeHtml(event.reason)}</td></tr>`);
-    rows.push(`<tr><td>${t("email_classification")}</td><td>${escapeHtml(translateClassification(event.airline_classification))}</td></tr>`);
+    if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
+    if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
+    if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
+    if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
+    if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
+    if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
+    rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
+    rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
 
     container.innerHTML = `
       <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.join("")}</table>
-      <p style="margin-top:16px"><a href="/">&larr; Back to dashboard</a></p>`;
+      <dl class="detail-grid">${rows.join("")}</dl>
+      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
     await setupEventTrackPanel(event);
   } catch (error) {
     container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
@@ -860,18 +897,16 @@ function handleHashRoute() {
   const hash = window.location.hash || "";
   const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
   if (match) {
-    $$(".tab").forEach((t) => t.classList.remove("active"));
+    $$(".tab").forEach((t) => { t.classList.remove("active"); try { t.setAttribute("aria-selected", "false"); } catch {} });
     $$(".view").forEach((v) => v.classList.remove("active"));
     const detailView = $("#view-event-detail");
     if (detailView) {
       detailView.classList.add("active");
       loadEventDetail(match[1]);
-      detailView.setAttribute("tabindex", "-1");
-      detailView.focus();
+      try { detailView.setAttribute("tabindex", "-1"); detailView.focus(); } catch {}
     }
   }
 }
-
 async function loadStatus() {
   const container = $("#dashboard-events");
   return withLoading(null, container, async () => {
@@ -943,7 +978,7 @@ async function loadAreas() {
       ? result.items
           .map(
             (area) => `<tr>
-            <td><input class="area-checkbox" type="checkbox" data-id="${escapeHtml(area.id)}" ${area.selected ? "checked" : ""}></td>
+            <td><label class="check area-label"><input class="area-checkbox" type="checkbox" data-id="${escapeHtml(area.id)}" ${area.selected ? "checked" : ""}></label></td>
             <td>${escapeHtml(area.name)}</td><td>${translateCategory(area.category)}</td>
             <td>${escapeHtml(area.state || "—")}</td><td>${escapeHtml(area.phase || "—")}</td>
             <td>${escapeHtml(area.source)}</td>
@@ -979,7 +1014,7 @@ async function bulkFiltered(selected) {
 function reviewCard(event) {
   const hexLinks = aircraftHexLinks(event.aircraft_hex);
   const hexDisplay = hexLinks.length
-    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
     : escapeHtml(event.aircraft_hex.toUpperCase());
   const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
@@ -1309,9 +1344,51 @@ async function loadSettings() {
       });
     });
   });
-
   renderLegacyProviderWarning(result, $("#legacy-provider-warning"));
   applyTranslations();
+  writeLocalPrefs();
+}
+
+function initSettingsStepper() {
+  const stepper = document.querySelector(".settings-stepper");
+  if (!stepper) return;
+  const tabs = [...stepper.querySelectorAll('[role="tab"]')];
+  const steps = [...document.querySelectorAll(".settings-step")];
+  function showStep(n) {
+    tabs.forEach((btn) => {
+      const isActive = btn.dataset.step === String(n);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      btn.classList.toggle("active", isActive);
+    });
+    steps.forEach((panel) => {
+      const isActive = panel.id === `settings-step-${n}`;
+      panel.hidden = !isActive;
+      panel.classList.toggle("active", isActive);
+    });
+  }
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.step));
+  });
+  document.querySelectorAll(".settings-next").forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.next));
+  });
+  document.querySelectorAll(".settings-prev").forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.prev));
+  });
+  showStep(1);
+}
+
+function initHelpToggles() {
+  document.querySelectorAll(".help-button").forEach((btn) => {
+    const targetId = btn.getAttribute("aria-describedby");
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (!target) return;
+    btn.addEventListener("click", () => {
+      const willShow = target.hidden;
+      target.hidden = !willShow;
+      btn.setAttribute("aria-expanded", willShow ? "true" : "false");
+    });
+  });
 }
 
 async function runAction(button, text, endpoint) {
@@ -1331,8 +1408,13 @@ async function runAction(button, text, endpoint) {
 }
 
 async function init() {
-  appState.language = detectBrowserLanguage();
+  readLocalPrefs();
+  try {
+    const storedLang = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:lang") : null;
+    if (!storedLang) appState.language = detectBrowserLanguage();
+  } catch { appState.language = detectBrowserLanguage(); }
   updateHtmlLang();
+  applyTranslations();
   // Fetch translations from backend (single source of truth)
   try {
     const i18n = await fetch("/api/i18n", { credentials: "same-origin" });
@@ -1347,11 +1429,12 @@ async function init() {
   await loadStatus();
   handleHashRoute();
   try { fr24WizardInit(); } catch {}
+  try { initSettingsStepper(); } catch {}
+  try { initHelpToggles(); } catch {}
 }
-
 window.addEventListener("hashchange", handleHashRoute);
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
-  document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} });
+  document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
 }
 
 $("#login-form").addEventListener("submit", async (event) => {
@@ -1368,7 +1451,9 @@ $("#login-form").addEventListener("submit", async (event) => {
     await loadSettings();
     await loadStatus();
   } catch (error) {
-    $("#login-error").textContent = error.message;
+    const msg = String(error.message || "");
+    const isThrottled = (error.status === 429) || /too many/i.test(msg);
+    $("#login-error").textContent = isThrottled ? t("login_throttled") : error.message;
   }
 });
 
@@ -1382,6 +1467,7 @@ $("#lang-toggle").addEventListener("click", async () => {
   $("#lang-toggle").textContent = appState.language === "pt" ? "PT" : "EN";
   updateHtmlLang();
   applyTranslations();
+  writeLocalPrefs();
   // Re-render the active data view so table rows pick up the new language
   const activeTab = $(".tab.active");
   if (activeTab) {
@@ -1396,16 +1482,22 @@ $("#lang-toggle").addEventListener("click", async () => {
   if (appState.csrfToken) {
     try {
       await api("/api/settings", { method: "POST", body: JSON.stringify({ values: { language: appState.language } }) });
+      await loadSettings();
     } catch { /* best effort */ }
   }
 });
 
 $$(".tab").forEach((tab) => {
   tab.addEventListener("click", async () => {
-    $$(".tab").forEach((item) => item.classList.remove("active"));
+    $$(".tab").forEach((item) => { item.classList.remove("active"); try { item.setAttribute("aria-selected", "false"); } catch {} });
     tab.classList.add("active");
+    try { tab.setAttribute("aria-selected", "true"); } catch {}
     $$(".view").forEach((view) => view.classList.remove("active"));
-    $(`#view-${tab.dataset.view}`).classList.add("active");
+    const target = $(`#view-${tab.dataset.view}`);
+    if (target) {
+      target.classList.add("active");
+      try { target.focus(); } catch {}
+    }
     const containerMap = {
       areas: $("#areas-body"),
       events: $("#review-list"),
@@ -1415,7 +1507,7 @@ $$(".tab").forEach((tab) => {
       settings: $("#view-settings"),
     };
     const c = containerMap[tab.dataset.view];
-    if (c) c.setAttribute("aria-busy", "true");
+    if (c) try { c.setAttribute("aria-busy", "true"); } catch {}
     try {
       if (tab.dataset.view === "areas") await loadAreas();
       if (tab.dataset.view === "events") await loadReviews();
@@ -1423,13 +1515,9 @@ $$(".tab").forEach((tab) => {
       if (tab.dataset.view === "fr24") await loadFr24();
       if (tab.dataset.view === "logs") await loadLogs();
     } finally {
-      if (c) c.removeAttribute("aria-busy");
+      if (c) try { c.removeAttribute("aria-busy"); } catch {}
     }
   });
-});
-
-$("#legacy-provider-warning")?.addEventListener("click", () => {
-  $(".tab[data-view='fr24']")?.click();
 });
 
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
@@ -1440,6 +1528,25 @@ $("#area-filter").addEventListener("click", (event) => {
   appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
   withLoading(event.currentTarget, $("#areas-body"), loadAreas);
 });
+const debouncedAreaSearch = debounce(() => {
+  try {
+    const val = $("#area-search") ? $("#area-search").value : "";
+    appState.areaFilter.search = val;
+    loadAreas();
+  } catch {}
+}, 300);
+try {
+  $("#area-search")?.addEventListener("input", debouncedAreaSearch);
+  $("#area-search")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      try {
+        appState.areaFilter.search = event.currentTarget.value;
+        loadAreas();
+      } catch {}
+    }
+  });
+} catch {}
 $("#select-all-filtered").addEventListener("click", () => bulkFiltered(true));
 $("#deselect-all-filtered").addEventListener("click", () => bulkFiltered(false));
 $("#review-refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#review-list"), loadReviews));
