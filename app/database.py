@@ -1504,6 +1504,7 @@ def list_events(
     limit: int = 100,
     event_type: str = "",
     review_status: str = "",
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     where: list[str] = []
     params: list[Any] = []
@@ -1516,11 +1517,10 @@ def list_events(
     clause = " WHERE " + " AND ".join(where) if where else ""
     with db() as conn:
         rows = conn.execute(
-            f"SELECT * FROM events{clause} ORDER BY occurred_at DESC LIMIT ?",
-            [*params, min(max(limit, 1), 500)],
+            f"SELECT * FROM events{clause} ORDER BY occurred_at DESC LIMIT ? OFFSET ?",
+            [*params, min(max(limit, 1), 500), max(offset, 0)],
         ).fetchall()
     return [_event_from_row(row) for row in rows]
-
 
 
 

@@ -663,12 +663,29 @@ async def email_test(request: Request):
 async def events_get(
     request: Request,
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     event_type: str = "",
     review_status: str = "",
 ):
     require_auth(request)
-    return {"events": list_events(limit, event_type, review_status)}
-
+    events = list_events(limit, event_type, review_status, offset)
+    # total for pagination — cheap count query with same filter
+    try:
+        from .database import db as _db
+        where = []
+        params = []
+        if event_type in {"PROBABLE_STOP", "DISAPPEARED"}:
+            where.append("event_type=?")
+            params.append(event_type)
+        if review_status in {"useful", "noise", "uncertain", "unreviewed"}:
+            where.append("review_status=?")
+            params.append(review_status)
+        clause = " WHERE " + " AND ".join(where) if where else ""
+        with _db() as conn:
+            total = int(conn.execute(f"SELECT COUNT(*) FROM events{clause}", params).fetchone()[0])
+    except Exception:
+        total = len(events)
+    return {"events": events, "total": total}
 
 @app.post("/api/events/{event_id}/review")
 async def event_review(request: Request, event_id: str, payload: ReviewPayload):

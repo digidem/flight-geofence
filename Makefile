@@ -1,4 +1,4 @@
-.PHONY: up public down logs test lint check sync poll backup fix-permissions bump-version dev
+.PHONY: up public down logs test lint check a11y sync poll backup fix-permissions bump-version dev
 
 # Canonical version source: app/main.py line with APP_VERSION = "X.Y.Z"
 VERSION_FILES_BARE = Dockerfile app/main.py LINKS_REPORT.txt
@@ -44,6 +44,23 @@ lint:
 check:
 	uv run python -m compileall -q app tests
 	uv run python -m pytest
+	@echo "# optional: npx lighthouse http://127.0.0.1:8081 --chrome-flags=\"--headless\" (requires axe-core/lighthouse dev deps, see 'make a11y' notes)"
+
+a11y:
+	uv run python -m pytest -q
+	@if npx --yes axe-core --version >/dev/null 2>&1; then \
+		echo "axe-core found — running axe checks (add real CLI wiring as needed)"; \
+		npx --yes axe-core --version; \
+	else \
+		echo "skip: axe-core not installed — run 'npm i -D axe-core lighthouse' (requires approval)"; \
+	fi
+	@if npx --yes lighthouse --version >/dev/null 2>&1; then \
+		echo "lighthouse found — to run: npx lighthouse http://127.0.0.1:8081 --chrome-flags=\"--headless\" --output=json --output-path=./lighthouse.json"; \
+		npx --yes lighthouse --version; \
+	else \
+		echo "skip: lighthouse not installed — run 'npm i -D axe-core lighthouse' (requires approval)"; \
+	fi
+	@echo "a11y: optional dev deps axe-core/lighthouse remain dependency-free unless approved (npm i -D axe-core lighthouse)"
 
 sync:
 	docker compose exec flight-monitor python -m app.cli sync

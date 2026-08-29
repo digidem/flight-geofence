@@ -465,8 +465,19 @@ select:focus-visible {
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
 }
+.minimap-legend{display:flex;gap:12px;font-size:.7rem;color:var(--muted);margin-top:4px}
+.legend-area::before{content:"— ";color:var(--forest)}
+.legend-bounds::before{content:"- - ";color:var(--burgundy)}
 
-/* Logs */
+/* Command palette (P2-01) */
+.cmd-palette{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;padding-top:10vh;z-index:1001}
+.cmd-palette-panel{width:min(560px,90vw);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px}
+#cmd-input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:1rem}
+#cmd-results{margin-top:8px;max-height:50vh;overflow:auto}
+.cmd-result{display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:transparent;border-radius:6px;cursor:pointer}
+.cmd-result:hover,.cmd-result:focus-visible{background:var(--paper);outline:2px solid var(--forest);outline-offset:-2px}
+.cmd-result .cmd-kind{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.cmd-empty{padding:8px}
 tr.log-row-failed {
   background: rgba(159, 52, 47, 0.07);
 }

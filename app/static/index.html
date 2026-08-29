@@ -75,13 +75,14 @@
           <div class="phase-grid areas-instructions"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" role="alert" aria-live="assertive" hidden></p></div>
           <div class="bulk"><button id="select-all-filtered" class="button primary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><button id="deselect-all-filtered" class="button ghost dark" data-i18n="areas_deselect_filtered">Desselecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
           <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="areas_title">Selecionar áreas monitoradas</caption><thead><tr><th scope="col" data-i18n="col_monitor">Monitorar</th><th scope="col" data-i18n="col_name">Nome</th><th scope="col" data-i18n="col_type">Tipo</th><th scope="col" data-i18n="col_state">Estado</th><th scope="col" data-i18n="col_phase_category">Fase/Categoria</th><th scope="col" data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
+          <div class="actions" aria-label="Areas pagination"><button id="areas-prev" class="button ghost dark" data-i18n="areas_prev" aria-label="Previous page">Anterior</button><button id="areas-next" class="button ghost dark" data-i18n="areas_next" aria-label="Next page">Próxima</button><span id="areas-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
         </article>
       </section>
-
       <section id="view-events" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="review_subtitle">Evidência de calibração</p><h2 data-i18n="review_title">Revisar eventos detectados</h2></div><div class="filters"><select id="review-filter"><option value="" data-i18n="review_all">Todas as revisões</option><option value="unreviewed" data-i18n="review_unreviewed">Não revisados</option><option value="useful" data-i18n="review_useful">Úteis</option><option value="noise" data-i18n="review_noise">Ruído</option><option value="uncertain" data-i18n="review_uncertain">Incertos</option></select><button id="review-refresh" class="button secondary" data-i18n="review_refresh">Atualizar</button></div></div>
           <div id="review-list" class="review-list"></div>
+          <div class="actions" aria-label="Reviews pagination"><button id="review-prev" class="button ghost dark" data-i18n="review_prev" aria-label="Previous page">Anterior</button><button id="review-next" class="button ghost dark" data-i18n="review_next" aria-label="Next page">Próxima</button><span id="review-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
         </article>
       </section>
 
@@ -276,6 +277,12 @@
         </article>
       </section>
     </main>
+  </div>
+  <div id="cmd-palette" class="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" hidden>
+    <div class="cmd-palette-panel">
+      <input id="cmd-input" type="text" placeholder="Jump…" aria-label="Search commands, areas, events">
+      <div id="cmd-results" role="listbox"></div>
+    </div>
   </div>
   <script src="/static/app.js" defer></script>
 </body>
