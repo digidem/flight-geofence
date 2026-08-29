@@ -14,7 +14,7 @@ Flight Geofence Alerts is a private, single-operator proof of concept that combi
 > [!CAUTION]
 > An event is an **unverified monitoring signal**. It does not prove landing, deliberate transponder shutdown, illegal mining, or wrongdoing. Aircraft feeds are incomplete—especially for low-flying aircraft in areas with limited receiver coverage—and every event requires human corroboration.
 
-**Release:** `v0.7.0` · **Default phase:** `Shadow` · **Default bind:** `127.0.0.1:8080`
+**Release:** `v0.8.0` · **Default phase:** `Shadow` · **Default bind:** `127.0.0.1:8080`
 
 ## Contents
 

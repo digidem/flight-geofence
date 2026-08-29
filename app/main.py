@@ -95,7 +95,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 cfg = env_settings()
 poll_lock = asyncio.Lock()
 sync_lock = asyncio.Lock()
