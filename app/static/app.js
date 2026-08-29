@@ -5,14 +5,22 @@ const fallbackTranslations = {
     login_subtitle: "Use a senha configurada como",
     login_button: "Entrar",
     login_password_label: "Senha",
+    login_throttled: "Muitas tentativas — tente novamente em 15 minutos.",
+    login_retry_in: "Tente novamente em 15 minutos.",
+    skip_link: "Pular para o conteúdo",
     app_title: "Flight Geofence Alerts",
+    spec_disclaimer_banner: "Sinais não verificados — não constituem prova de pouso, desligamento deliberado, garimpo ilegal ou irregularidade.",
   },
   en: {
     login_title: "Protected monitoring interface",
     login_subtitle: "Use the password configured as",
     login_button: "Log in",
     login_password_label: "Password",
+    login_throttled: "Too many attempts — try again in 15 minutes.",
+    login_retry_in: "Try again in 15 minutes.",
+    skip_link: "Skip to content",
     app_title: "Flight Geofence Alerts",
+    spec_disclaimer_banner: "Unverified signals — not proof of landing, deliberate transponder shutdown, illegal mining, or wrongdoing.",
   },
 };
 
@@ -64,6 +72,32 @@ function updateHtmlLang() {
   document.documentElement.lang = appState.language === "pt" ? "pt-br" : "en";
 }
 
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; fn(...args); }, ms);
+  };
+}
+
+function readLocalPrefs() {
+  try {
+    const lang = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:lang") : null;
+    const tz = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:timezone") : null;
+    if (lang === "pt" || lang === "en") appState.language = lang;
+    if (tz) appState.timezone = tz;
+  } catch {}
+}
+
+function writeLocalPrefs() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("flight-geofence:lang", appState.language);
+      localStorage.setItem("flight-geofence:timezone", appState.timezone);
+    }
+  } catch {}
+}
+
 function isMutation(method) {
   return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
 }
@@ -83,8 +117,122 @@ async function api(url, options = {}) {
     body = { detail: response.statusText };
   }
   if (response.status === 401) showLogin();
-  if (!response.ok) throw new Error(body.detail || body.error || response.statusText);
+  if (!response.ok) {
+    const msg = body.detail || body.error || response.statusText;
+    const err = new Error(msg);
+    err.status = response.status;
+    throw err;
+  }
   return body;
+}
+
+async function withLoading(button, container, fn) {
+  if (button) try { button.disabled = true; } catch {}
+  if (container && typeof container.setAttribute === "function") try { container.setAttribute("aria-busy", "true"); } catch {}
+  let spinner = null;
+  let originalText = null;
+  if (button) {
+    try { originalText = button.textContent; } catch {}
+    try {
+      if (typeof document !== "undefined" && typeof document.createElement === "function") {
+        spinner = document.createElement("span");
+        spinner.className = "spinner";
+        if (typeof spinner.setAttribute === "function") spinner.setAttribute("aria-hidden", "true");
+        button.prepend(spinner);
+      }
+    } catch {}
+  }
+  try {
+    return await fn();
+  } finally {
+    if (button) {
+      try { button.disabled = false; } catch {}
+      try { if (spinner && spinner.parentNode) spinner.remove(); } catch {}
+      try {
+        if (originalText !== null && button.textContent.trim() === "" && originalText.trim() !== "") {
+          button.textContent = originalText;
+        }
+      } catch {}
+    }
+    if (container && typeof container.removeAttribute === "function") try { container.removeAttribute("aria-busy"); } catch {}
+  }
+}
+
+function showModal({ title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm }) {
+  // VM test harness (tests/test_fr24_track_panel_vm.mjs) provides a minimal
+  // document stub without getElementById/body — in that context, auto-confirm
+  // synchronously so the track-fetch flow stays testable without a real DOM.
+  if (typeof document === "undefined" || typeof document.getElementById !== "function" || !document.body) {
+    onConfirm?.();
+    return { close() {}, overlay: null };
+  }
+  const existing = document.getElementById("ux-modal");
+  const overlay = document.createElement("div");
+  overlay.id = "ux-modal";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  if (title) overlay.setAttribute("aria-label", title);
+  overlay.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);z-index:1000;";
+  const dialog = document.createElement("div");
+  dialog.style.cssText = "background:var(--surface,#fff);padding:20px;max-width:480px;width:90%;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,0.2);";
+  const titleEl = document.createElement("h2");
+  titleEl.textContent = title || "";
+  titleEl.style.margin = "0 0 12px 0";
+  titleEl.style.fontSize = "1.1rem";
+  const msgEl = document.createElement("p");
+  msgEl.textContent = message || "";
+  msgEl.style.margin = "0";
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:12px;justify-content:flex-end;margin-top:16px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "button ghost dark";
+  cancelBtn.textContent = cancelText;
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.className = "button primary";
+  confirmBtn.textContent = confirmText;
+  actions.append(cancelBtn, confirmBtn);
+  if (title) dialog.append(titleEl);
+  dialog.append(msgEl, actions);
+  overlay.append(dialog);
+  document.body.append(overlay);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    }
+    if (event.key === "Tab") {
+      const focusables = [cancelBtn, confirmBtn];
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  };
+  document.addEventListener("keydown", onKey);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  cancelBtn.addEventListener("click", close);
+  confirmBtn.addEventListener("click", async () => {
+    const result = await onConfirm?.();
+    if (result !== false) close();
+  });
+  confirmBtn.focus();
+  return { close, overlay };
 }
 
 function showLogin() {
@@ -240,6 +388,7 @@ function fr24PopulateForm(cluster) {
   form.elements.namedItem("manual_west").value = cluster.manual_west ?? "";
   form.elements.namedItem("manual_east").value = cluster.manual_east ?? "";
   $("#fr24-area-picker").innerHTML = fr24AreaPickerRows(cluster.area_ids || []);
+  try { fr24WizardGo(1); } catch {}
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -249,7 +398,96 @@ function fr24ResetForm() {
   form.elements.namedItem("id").value = "";
   $("#fr24-manual-bounds-fields").hidden = true;
   $("#fr24-area-picker").innerHTML = fr24AreaPickerRows([]);
+  if (typeof fr24WizardGo === "function") fr24WizardGo(1);
 }
+
+let fr24WizardStep = 1;
+if (typeof appState !== "undefined") appState.fr24WizardStep = 1;
+
+function fr24WizardValidateBounds() {
+  const form = $("#fr24-cluster-form");
+  if (!form) return true;
+  const errEl = document.getElementById("fr24-wizard-bounds-error");
+  if (form.elements.namedItem("use_manual_bounds")?.checked) {
+    const nVal = form.elements.namedItem("manual_north").value;
+    const sVal = form.elements.namedItem("manual_south").value;
+    if (nVal !== "" && sVal !== "") {
+      const bounds = fr24ClusterNumericBounds({
+        use_manual_bounds: true,
+        manual_north: Number(nVal),
+        manual_south: Number(sVal),
+        manual_west: form.elements.namedItem("manual_west").value ? Number(form.elements.namedItem("manual_west").value) : null,
+        manual_east: form.elements.namedItem("manual_east").value ? Number(form.elements.namedItem("manual_east").value) : null,
+        calc_north: null, calc_south: null, calc_west: null, calc_east: null,
+      });
+      // also simple N>S check
+      if (bounds && bounds.north <= bounds.south) {
+        if (errEl) { errEl.textContent = "North must be greater than South"; errEl.hidden = false; }
+        return false;
+      }
+      if (Number(nVal) <= Number(sVal)) {
+        if (errEl) { errEl.textContent = "North must be greater than South"; errEl.hidden = false; }
+        return false;
+      }
+    }
+  }
+  if (errEl) errEl.hidden = true;
+  return true;
+}
+
+function fr24WizardGo(step) {
+  const clamped = Math.max(1, Math.min(4, step));
+  fr24WizardStep = clamped;
+  if (typeof appState !== "undefined") appState.fr24WizardStep = clamped;
+  window.fr24WizardStep = clamped;
+  const fieldsets = document.querySelectorAll("#fr24-cluster-form fieldset[data-step]");
+  fieldsets.forEach((fs) => {
+    const s = Number(fs.getAttribute("data-step"));
+    fs.hidden = s !== clamped;
+  });
+  const prog = document.getElementById("fr24-wizard-progress");
+  if (prog) {
+    prog.setAttribute("aria-valuenow", String(clamped));
+    prog.textContent = `Step ${clamped} of 4`;
+  }
+  const label = document.getElementById("fr24-wizard-step-label");
+  if (label) label.textContent = `Step ${clamped} of 4`;
+  const prev = document.getElementById("fr24-wizard-prev");
+  const next = document.getElementById("fr24-wizard-next");
+  const save = document.getElementById("fr24-wizard-save") || document.querySelector("#fr24-cluster-form button[type='submit']");
+  if (prev) prev.hidden = clamped === 1;
+  if (next) next.hidden = clamped === 4;
+  if (save) save.hidden = clamped !== 4;
+}
+
+function fr24WizardInit() {
+  const form = $("#fr24-cluster-form");
+  if (!form) return;
+  if (!form.querySelector("fieldset[data-step]")) return;
+  // ensure progress exists
+  fr24WizardGo(1);
+  const next = document.getElementById("fr24-wizard-next");
+  const prev = document.getElementById("fr24-wizard-prev");
+  if (next) {
+    next.addEventListener("click", () => {
+      if (!fr24WizardValidateBounds()) return;
+      fr24WizardGo(fr24WizardStep + 1);
+    });
+  }
+  if (prev) {
+    prev.addEventListener("click", () => {
+      const errEl = document.getElementById("fr24-wizard-bounds-error");
+      if (errEl) errEl.hidden = true;
+      fr24WizardGo(fr24WizardStep - 1);
+    });
+  }
+  // validate on manual bounds input
+  ["manual_north", "manual_south"].forEach((name) => {
+    const el = form.elements.namedItem(name);
+    if (el) el.addEventListener("input", () => { document.getElementById("fr24-wizard-bounds-error") && (document.getElementById("fr24-wizard-bounds-error").hidden = true); });
+  });
+}
+
 
 function fr24SourceNote(source) {
   if (source === "environment") return t("fr24_source_environment");
@@ -397,14 +635,32 @@ async function loadFr24() {
     const cluster = clustersResult.clusters.find((item) => item.id === card.dataset.id);
     if (!cluster) return;
     card.querySelector(".fr24-edit").addEventListener("click", () => fr24PopulateForm(cluster));
-    card.querySelector(".fr24-delete").addEventListener("click", async () => {
-      if (!window.confirm(`${t("fr24_delete")}: ${cluster.name}?`)) return;
-      try {
-        await api(`/api/fr24/clusters/${encodeURIComponent(cluster.id)}`, { method: "DELETE" });
-        await loadFr24();
-      } catch (error) {
-        window.alert(error.message);
-      }
+    card.querySelector(".fr24-delete").addEventListener("click", () => {
+      const btn = card.querySelector(".fr24-delete");
+      showModal({
+        title: t("fr24_delete"),
+        message: `${t("fr24_delete")}: ${cluster.name}?`,
+        confirmText: t("fr24_delete"),
+        cancelText: "Cancel",
+        onConfirm: async () => {
+          try {
+            await withLoading(btn, card, async () => {
+              await api(`/api/fr24/clusters/${encodeURIComponent(cluster.id)}`, { method: "DELETE" });
+              await loadFr24();
+            });
+          } catch (error) {
+            let errEl = card.querySelector(".fr24-delete-error");
+            if (!errEl) {
+              errEl = document.createElement("div");
+              errEl.className = "error fr24-delete-error";
+              errEl.setAttribute("role", "alert");
+              card.append(errEl);
+            }
+            errEl.textContent = error.message;
+            errEl.hidden = false;
+          }
+        },
+      });
     });
   });
 
@@ -517,7 +773,7 @@ function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
   const hexLinks = aircraftHexLinks(event.aircraft_hex);
   const hexDisplay = hexLinks.length
-    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(hex)}</a>`
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);
   const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
@@ -557,31 +813,31 @@ async function loadEventDetail(eventId) {
     const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
 
     const rows = [
-      `<tr><td>${t("email_event")}</td><td><strong>${escapeHtml(eventLabel(event.event_type))}</strong></td></tr>`,
-      `<tr><td>${t("email_time")}</td><td>${escapeHtml(formatTime(event.occurred_at))}</td></tr>`,
-      `<tr><td>${t("email_aircraft")}</td><td><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</td></tr>`,
+      `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
+      `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
+      `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
     ];
-    if (event.callsign) rows.push(`<tr><td>${t("email_callsign")}</td><td>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</td></tr>`);
-    if (event.registration) rows.push(`<tr><td>${t("email_registration")}</td><td>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</td></tr>`);
-    if (event.aircraft_type) rows.push(`<tr><td>${t("email_aircraft_type")}</td><td>${escapeHtml(event.aircraft_type)}</td></tr>`);
-    if (event.area_names.length) rows.push(`<tr><td>${t("email_protected_areas")}</td><td>${event.area_names.map(escapeHtml).join(", ")}</td></tr>`);
+    if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
+    if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
+    if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
+    if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
     if (event.latitude != null && event.longitude != null) {
       const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
-      rows.push(`<tr><td>${t("email_last_position")}</td><td>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</td></tr>`);
+      rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
     }
-    if (event.altitude_ft != null) rows.push(`<tr><td>${t("email_altitude")}</td><td>${escapeHtml(String(event.altitude_ft))} ft MSL</td></tr>`);
-    if (event.ground_speed_kt != null) rows.push(`<tr><td>${t("email_ground_speed")}</td><td>${escapeHtml(String(event.ground_speed_kt))} kt</td></tr>`);
-    if (event.provider) rows.push(`<tr><td>${t("email_provider")}</td><td>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</td></tr>`);
-    if (details.source_type) rows.push(`<tr><td>${t("email_source_type")}</td><td>${escapeHtml(details.source_type)}</td></tr>`);
-    if (details.origin) rows.push(`<tr><td>${t("email_origin")}</td><td>${escapeHtml(details.origin)}</td></tr>`);
-    if (details.destination) rows.push(`<tr><td>${t("email_destination")}</td><td>${escapeHtml(details.destination)}</td></tr>`);
-    rows.push(`<tr><td>${t("email_reason")}</td><td>${escapeHtml(event.reason)}</td></tr>`);
-    rows.push(`<tr><td>${t("email_classification")}</td><td>${escapeHtml(translateClassification(event.airline_classification))}</td></tr>`);
+    if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
+    if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
+    if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
+    if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
+    if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
+    if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
+    rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
+    rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
 
     container.innerHTML = `
       <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:14px">${rows.join("")}</table>
-      <p style="margin-top:16px"><a href="/">&larr; Back to dashboard</a></p>`;
+      <dl class="detail-grid">${rows.join("")}</dl>
+      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
     await setupEventTrackPanel(event);
   } catch (error) {
     container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
@@ -641,32 +897,35 @@ function handleHashRoute() {
   const hash = window.location.hash || "";
   const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
   if (match) {
-    $$(".tab").forEach((t) => t.classList.remove("active"));
+    $$(".tab").forEach((t) => { t.classList.remove("active"); try { t.setAttribute("aria-selected", "false"); } catch {} });
     $$(".view").forEach((v) => v.classList.remove("active"));
     const detailView = $("#view-event-detail");
     if (detailView) {
       detailView.classList.add("active");
       loadEventDetail(match[1]);
+      try { detailView.setAttribute("tabindex", "-1"); detailView.focus(); } catch {}
     }
   }
 }
-
 async function loadStatus() {
-  const status = await api("/api/status");
-  $("#phase-badge").textContent = status.phase;
-  $("#warnings").innerHTML = status.warnings
-    .map((warning) => `<div class="warning">${escapeHtml(warning)}</div>`)
-    .join("");
-  $("#metrics").innerHTML = [
-    metric(t("metric_areas"), status.areas.selected, `${status.areas.total} ${t("metric_downloaded")}`),
-    metric(t("metric_regions"), status.query_regions, `${status.estimated_requests_per_day} ${t("metric_estimated")}`),
-    metric(t("metric_events"), status.events.total, `${status.events.review.useful || 0} ${t("metric_reviewed")}`),
-    metric(t("metric_last_poll"), status.latest_poll?.success ? t("metric_healthy") : t("metric_not_ready"), status.latest_poll?.completed_at ? formatTime(status.latest_poll.completed_at) : t("metric_no_poll")),
-  ].join("");
-  const recent = await api("/api/events?limit=20");
-  $("#dashboard-events").innerHTML = recent.events.length
-    ? recent.events.map(eventRow).join("")
-    : `<tr><td colspan="7" class="muted">${t("no_events")}</td></tr>`;
+  const container = $("#dashboard-events");
+  return withLoading(null, container, async () => {
+    const status = await api("/api/status");
+    $("#phase-badge").textContent = status.phase;
+    $("#warnings").innerHTML = status.warnings
+      .map((warning) => `<div class="warning">${escapeHtml(warning)}</div>`)
+      .join("");
+    $("#metrics").innerHTML = [
+      metric(t("metric_areas"), status.areas.selected, `${status.areas.total} ${t("metric_downloaded")}`),
+      metric(t("metric_regions"), status.query_regions, `${status.estimated_requests_per_day} ${t("metric_estimated")}`),
+      metric(t("metric_events"), status.events.total, `${status.events.review.useful || 0} ${t("metric_reviewed")}`),
+      metric(t("metric_last_poll"), status.latest_poll?.success ? t("metric_healthy") : t("metric_not_ready"), status.latest_poll?.completed_at ? formatTime(status.latest_poll.completed_at) : t("metric_no_poll")),
+    ].join("");
+    const recent = await api("/api/events?limit=20");
+    $("#dashboard-events").innerHTML = recent.events.length
+      ? recent.events.map(eventRow).join("")
+      : `<tr><td colspan="7" class="muted">${t("no_events")}</td></tr>`;
+  });
 }
 
 function areaFeedback(message) {
@@ -705,48 +964,57 @@ async function saveSelection(payload) {
 }
 
 async function loadAreas() {
-  const params = new URLSearchParams({ ...appState.areaFilter, limit: "500" });
-  const [result, status] = await Promise.all([
-    api(`/api/areas?${params}`),
-    api("/api/status"),
-  ]);
-  appState.areas = result.items;
-  renderAreaStatus(status);
-  $("#area-summary").textContent = `${result.total} ${t("areas_matching")}`;
-  $("#areas-body").innerHTML = result.items.length
-    ? result.items
-        .map(
-          (area) => `<tr>
-            <td><input class="area-checkbox" type="checkbox" data-id="${escapeHtml(area.id)}" ${area.selected ? "checked" : ""}></td>
+  const container = $("#areas-body");
+  return withLoading(null, container, async () => {
+    const params = new URLSearchParams({ ...appState.areaFilter, limit: "500" });
+    const [result, status] = await Promise.all([
+      api(`/api/areas?${params}`),
+      api("/api/status"),
+    ]);
+    appState.areas = result.items;
+    renderAreaStatus(status);
+    $("#area-summary").textContent = `${result.total} ${t("areas_matching")}`;
+    $("#areas-body").innerHTML = result.items.length
+      ? result.items
+          .map(
+            (area) => `<tr>
+            <td><label class="check area-label"><input class="area-checkbox" type="checkbox" data-id="${escapeHtml(area.id)}" ${area.selected ? "checked" : ""}></label></td>
             <td>${escapeHtml(area.name)}</td><td>${translateCategory(area.category)}</td>
             <td>${escapeHtml(area.state || "—")}</td><td>${escapeHtml(area.phase || "—")}</td>
             <td>${escapeHtml(area.source)}</td>
           </tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="6" class="muted">${t("areas_no_data")}</td></tr>`;
-  $$(".area-checkbox").forEach((checkbox) => {
-    checkbox.addEventListener("change", async () => {
-      const saved = await saveSelection({ ids: [checkbox.dataset.id], selected: checkbox.checked });
-      if (!saved) {
-        checkbox.checked = !checkbox.checked; // server rejected: restore what the DB still holds
-        return;
-      }
-      await Promise.all([loadAreas(), loadStatus()]);
+          )
+          .join("")
+      : `<tr><td colspan="6" class="muted">${t("areas_no_data")}</td></tr>`;
+    $$(".area-checkbox").forEach((checkbox) => {
+      checkbox.addEventListener("change", async () => {
+        await withLoading(checkbox, container, async () => {
+          const saved = await saveSelection({ ids: [checkbox.dataset.id], selected: checkbox.checked });
+          if (!saved) {
+            checkbox.checked = !checkbox.checked;
+            return;
+          }
+          await Promise.all([loadAreas(), loadStatus()]);
+        });
+      });
     });
   });
 }
 
 async function bulkFiltered(selected) {
-  const saved = await saveSelection({ ...appState.areaFilter, selected });
-  if (!saved) return;
-  await Promise.all([loadAreas(), loadStatus()]);
+  const container = $("#areas-body");
+  const btn = selected ? $("#select-all-filtered") : $("#deselect-all-filtered");
+  return withLoading(btn, container, async () => {
+    const saved = await saveSelection({ ...appState.areaFilter, selected });
+    if (!saved) return;
+    await Promise.all([loadAreas(), loadStatus()]);
+  });
 }
 
 function reviewCard(event) {
   const hexLinks = aircraftHexLinks(event.aircraft_hex);
   const hexDisplay = hexLinks.length
-    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" style="color:var(--ink);text-decoration:underline">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
+    ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
     : escapeHtml(event.aircraft_hex.toUpperCase());
   const regLinks = registrationLinks(event.registration);
   const regDisplay = event.registration
@@ -761,24 +1029,46 @@ function reviewCard(event) {
 }
 
 async function loadReviews() {
-  const filter = $("#review-filter").value;
-  const result = await api(`/api/events?limit=200&review_status=${encodeURIComponent(filter)}`);
-  appState.events = result.events;
-  $("#review-list").innerHTML = result.events.length
-    ? result.events.map(reviewCard).join("")
-    : `<p class="muted">${t("review_no_events")}</p>`;
+  const container = $("#review-list");
+  return withLoading(null, container, async () => {
+    const filter = $("#review-filter").value;
+    const result = await api(`/api/events?limit=200&review_status=${encodeURIComponent(filter)}`);
+    appState.events = result.events;
+    $("#review-list").innerHTML = result.events.length
+      ? result.events.map(reviewCard).join("")
+      : `<p class="muted">${t("review_no_events")}</p>`;
   $$(".review-card").forEach((card, index) => {
     card.querySelector(".review-status").value = result.events[index].review_status;
-    card.querySelector(".review-save").addEventListener("click", async () => {
-      await api(`/api/events/${card.dataset.id}/review`, {
-        method: "POST",
-        body: JSON.stringify({
-          status: card.querySelector(".review-status").value,
-          notes: card.querySelector(".review-notes").value,
-        }),
+    const saveBtn = card.querySelector(".review-save");
+    saveBtn.addEventListener("click", async () => {
+      // ensure inline error container exists
+      let errEl = card.querySelector(".review-save-error");
+      if (!errEl) {
+        errEl = document.createElement("div");
+        errEl.className = "error review-save-error";
+        errEl.setAttribute("role", "alert");
+        errEl.hidden = true;
+        card.append(errEl);
+      }
+      errEl.hidden = true;
+      errEl.textContent = "";
+      try {
+        await withLoading(saveBtn, card, async () => {
+          await api(`/api/events/${card.dataset.id}/review`, {
+            method: "POST",
+            body: JSON.stringify({
+              status: card.querySelector(".review-status").value,
+              notes: card.querySelector(".review-notes").value,
+            }),
+          });
+          await loadStatus();
+        });
+      } catch (error) {
+        errEl.textContent = error.message;
+        errEl.hidden = false;
+      }
       });
-      await loadStatus();
-    });
+  });
   });
 }
 
@@ -900,9 +1190,10 @@ async function loadLogs() {
   if (appState.logsFilter.provider) params.set("provider", appState.logsFilter.provider);
   if (appState.logsFilter.hex) params.set("hex", appState.logsFilter.hex);
   if (appState.logsFilter.inside) params.set("inside", "1");
-  try {
-    const result = await api(`/api/logs?${params}`);
-    $("#logs-summary").textContent = t("logs_page_info")
+  return withLoading(null, $("#logs-body"), async () => {
+    try {
+      const result = await api(`/api/logs?${params}`);
+      $("#logs-summary").textContent = t("logs_page_info")
       .replace("{from}", String(result.rows.length ? appState.logsOffset + 1 : 0))
       .replace("{to}", String(appState.logsOffset + result.rows.length))
       .replace("{total}", String(result.total));
@@ -916,9 +1207,10 @@ async function loadLogs() {
       errorBox.hidden = false;
       errorBox.textContent = t("logs_load_error").replace("{error}", error.message);
     }
-    $("#logs-body").innerHTML = "";
-    $("#logs-summary").textContent = "";
-  }
+      $("#logs-body").innerHTML = "";
+      $("#logs-summary").textContent = "";
+    }
+  });
 }
 
 function formPayload(form) {
@@ -938,24 +1230,25 @@ function formPayload(form) {
 
 async function saveForm(form, override = null) {
   const resultBox = form.querySelector(".form-result");
-  const values = override || formPayload(form);
-  try {
-    const result = await api("/api/settings", {
-      method: "POST",
-      body: JSON.stringify({ values }),
-    });
-    if (Object.keys(result.errors).length) {
-      resultBox.textContent = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`).join(" · ");
-    } else {
-      resultBox.textContent = t("settings_saved");
+  const button = form.querySelector('button[type="submit"]');
+  return withLoading(button, form, async () => {
+    const values = override || formPayload(form);
+    try {
+      const result = await api("/api/settings", {
+        method: "POST",
+        body: JSON.stringify({ values }),
+      });
+      if (Object.keys(result.errors).length) {
+        resultBox.textContent = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`).join(" · ");
+      } else {
+        resultBox.textContent = t("settings_saved");
+      }
+      await loadSettings();
+      await loadStatus();
+    } catch (error) {
+      resultBox.textContent = error.message;
     }
-    // Settings must land before loadStatus renders timestamps: formatTime
-    // reads appState.timezone/language, set only after /api/settings resolves.
-    await loadSettings();
-    await loadStatus();
-  } catch (error) {
-    resultBox.textContent = error.message;
-  }
+  });
 }
 
 function setField(form, key, setting) {
@@ -1040,40 +1333,88 @@ async function loadSettings() {
   $$("button[data-provider]").forEach((button) => {
     button.addEventListener("click", async () => {
       const output = button.nextElementSibling;
-      output.textContent = t("settings_testing");
-      try {
-        const response = await api(`/api/providers/${button.dataset.provider}/test`, { method: "POST" });
-        output.textContent = `${response.aircraft} ${t("settings_aircraft_returned")}`;
-      } catch (error) {
-        output.textContent = error.message;
-      }
+      await withLoading(button, output, async () => {
+        output.textContent = t("settings_testing");
+        try {
+          const response = await api(`/api/providers/${button.dataset.provider}/test`, { method: "POST" });
+          output.textContent = `${response.aircraft} ${t("settings_aircraft_returned")}`;
+        } catch (error) {
+          output.textContent = error.message;
+        }
+      });
     });
   });
-
   renderLegacyProviderWarning(result, $("#legacy-provider-warning"));
   applyTranslations();
+  writeLocalPrefs();
+}
+
+function initSettingsStepper() {
+  const stepper = document.querySelector(".settings-stepper");
+  if (!stepper) return;
+  const tabs = [...stepper.querySelectorAll('[role="tab"]')];
+  const steps = [...document.querySelectorAll(".settings-step")];
+  function showStep(n) {
+    tabs.forEach((btn) => {
+      const isActive = btn.dataset.step === String(n);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      btn.classList.toggle("active", isActive);
+    });
+    steps.forEach((panel) => {
+      const isActive = panel.id === `settings-step-${n}`;
+      panel.hidden = !isActive;
+      panel.classList.toggle("active", isActive);
+    });
+  }
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.step));
+  });
+  document.querySelectorAll(".settings-next").forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.next));
+  });
+  document.querySelectorAll(".settings-prev").forEach((btn) => {
+    btn.addEventListener("click", () => showStep(btn.dataset.prev));
+  });
+  showStep(1);
+}
+
+function initHelpToggles() {
+  document.querySelectorAll(".help-button").forEach((btn) => {
+    const targetId = btn.getAttribute("aria-describedby");
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (!target) return;
+    btn.addEventListener("click", () => {
+      const willShow = target.hidden;
+      target.hidden = !willShow;
+      btn.setAttribute("aria-expanded", willShow ? "true" : "false");
+    });
+  });
 }
 
 async function runAction(button, text, endpoint) {
   const output = $("#action-result");
-  button.disabled = true;
-  output.textContent = text;
-  try {
-    const response = await api(endpoint, { method: "POST" });
-    output.textContent = response.error_message || response.error || response.status || t("action_completed");
-    // Settings first: formatTime in loadStatus needs appState.timezone set.
-    await loadSettings();
-    await loadStatus();
-  } catch (error) {
-    output.textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
+  const container = output;
+  return withLoading(button, container, async () => {
+    output.textContent = text;
+    try {
+      const response = await api(endpoint, { method: "POST" });
+      output.textContent = response.error_message || response.error || response.status || t("action_completed");
+      await loadSettings();
+      await loadStatus();
+    } catch (error) {
+      output.textContent = error.message;
+    }
+  });
 }
 
 async function init() {
-  appState.language = detectBrowserLanguage();
+  readLocalPrefs();
+  try {
+    const storedLang = typeof localStorage !== "undefined" ? localStorage.getItem("flight-geofence:lang") : null;
+    if (!storedLang) appState.language = detectBrowserLanguage();
+  } catch { appState.language = detectBrowserLanguage(); }
   updateHtmlLang();
+  applyTranslations();
   // Fetch translations from backend (single source of truth)
   try {
     const i18n = await fetch("/api/i18n", { credentials: "same-origin" });
@@ -1087,9 +1428,14 @@ async function init() {
   await loadSettings();
   await loadStatus();
   handleHashRoute();
+  try { fr24WizardInit(); } catch {}
+  try { initSettingsStepper(); } catch {}
+  try { initHelpToggles(); } catch {}
 }
-
 window.addEventListener("hashchange", handleHashRoute);
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
+}
 
 $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1105,7 +1451,9 @@ $("#login-form").addEventListener("submit", async (event) => {
     await loadSettings();
     await loadStatus();
   } catch (error) {
-    $("#login-error").textContent = error.message;
+    const msg = String(error.message || "");
+    const isThrottled = (error.status === 429) || /too many/i.test(msg);
+    $("#login-error").textContent = isThrottled ? t("login_throttled") : error.message;
   }
 });
 
@@ -1119,6 +1467,7 @@ $("#lang-toggle").addEventListener("click", async () => {
   $("#lang-toggle").textContent = appState.language === "pt" ? "PT" : "EN";
   updateHtmlLang();
   applyTranslations();
+  writeLocalPrefs();
   // Re-render the active data view so table rows pick up the new language
   const activeTab = $(".tab.active");
   if (activeTab) {
@@ -1133,40 +1482,75 @@ $("#lang-toggle").addEventListener("click", async () => {
   if (appState.csrfToken) {
     try {
       await api("/api/settings", { method: "POST", body: JSON.stringify({ values: { language: appState.language } }) });
+      await loadSettings();
     } catch { /* best effort */ }
   }
 });
 
 $$(".tab").forEach((tab) => {
   tab.addEventListener("click", async () => {
-    $$(".tab").forEach((item) => item.classList.remove("active"));
+    $$(".tab").forEach((item) => { item.classList.remove("active"); try { item.setAttribute("aria-selected", "false"); } catch {} });
     tab.classList.add("active");
+    try { tab.setAttribute("aria-selected", "true"); } catch {}
     $$(".view").forEach((view) => view.classList.remove("active"));
-    $(`#view-${tab.dataset.view}`).classList.add("active");
-    if (tab.dataset.view === "areas") await loadAreas();
-    if (tab.dataset.view === "events") await loadReviews();
-    if (tab.dataset.view === "settings") await loadSettings();
-    if (tab.dataset.view === "fr24") await loadFr24();
-    if (tab.dataset.view === "logs") await loadLogs();
+    const target = $(`#view-${tab.dataset.view}`);
+    if (target) {
+      target.classList.add("active");
+      try { target.focus(); } catch {}
+    }
+    const containerMap = {
+      areas: $("#areas-body"),
+      events: $("#review-list"),
+      logs: $("#logs-body"),
+      dashboard: $("#dashboard-events"),
+      fr24: $("#fr24-status"),
+      settings: $("#view-settings"),
+    };
+    const c = containerMap[tab.dataset.view];
+    if (c) try { c.setAttribute("aria-busy", "true"); } catch {}
+    try {
+      if (tab.dataset.view === "areas") await loadAreas();
+      if (tab.dataset.view === "events") await loadReviews();
+      if (tab.dataset.view === "settings") await loadSettings();
+      if (tab.dataset.view === "fr24") await loadFr24();
+      if (tab.dataset.view === "logs") await loadLogs();
+    } finally {
+      if (c) try { c.removeAttribute("aria-busy"); } catch {}
+    }
   });
-});
-
-$("#legacy-provider-warning")?.addEventListener("click", () => {
-  $(".tab[data-view='fr24']")?.click();
 });
 
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
 $("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
 $("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
-$("#refresh").addEventListener("click", loadStatus);
-$("#area-filter").addEventListener("click", () => {
+$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#dashboard-events"), loadStatus));
+$("#area-filter").addEventListener("click", (event) => {
   appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
-  loadAreas();
+  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
 });
+const debouncedAreaSearch = debounce(() => {
+  try {
+    const val = $("#area-search") ? $("#area-search").value : "";
+    appState.areaFilter.search = val;
+    loadAreas();
+  } catch {}
+}, 300);
+try {
+  $("#area-search")?.addEventListener("input", debouncedAreaSearch);
+  $("#area-search")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      try {
+        appState.areaFilter.search = event.currentTarget.value;
+        loadAreas();
+      } catch {}
+    }
+  });
+} catch {}
 $("#select-all-filtered").addEventListener("click", () => bulkFiltered(true));
 $("#deselect-all-filtered").addEventListener("click", () => bulkFiltered(false));
-$("#review-refresh").addEventListener("click", loadReviews);
-$("#logs-filter")?.addEventListener("click", () => {
+$("#review-refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#review-list"), loadReviews));
+$("#logs-filter")?.addEventListener("click", (event) => {
   appState.logsFilter = {
     kind: $("#logs-kind").value,
     provider: $("#logs-provider").value,
@@ -1174,15 +1558,15 @@ $("#logs-filter")?.addEventListener("click", () => {
     inside: $("#logs-inside").checked,
   };
   appState.logsOffset = 0;
-  loadLogs();
+  withLoading(event.currentTarget, $("#logs-body"), loadLogs);
 });
-$("#logs-prev")?.addEventListener("click", () => {
+$("#logs-prev")?.addEventListener("click", (event) => {
   appState.logsOffset = Math.max(0, appState.logsOffset - LOGS_LIMIT);
-  loadLogs();
+  withLoading(event.currentTarget, $("#logs-body"), loadLogs);
 });
-$("#logs-next")?.addEventListener("click", () => {
+$("#logs-next")?.addEventListener("click", (event) => {
   appState.logsOffset += LOGS_LIMIT;
-  loadLogs();
+  withLoading(event.currentTarget, $("#logs-body"), loadLogs);
 });
 $("#settings-core").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -1207,26 +1591,37 @@ $("#fr24-manual-bounds")?.addEventListener("change", (event) => {
 });
 
 $("#fr24-enable-toggle")?.addEventListener("change", async (event) => {
-  // FR24_ENABLED kill switch. Saved through the generic settings endpoint,
-  // which rejects the write when the value is pinned by the environment --
-  // the checkbox is already disabled in that case, so this catch is just a
-  // safety net that reports the reason instead of failing silently.
+  const toggle = event.currentTarget;
+  const container = $("#fr24-power") || $("#fr24-status");
   try {
-    await api("/api/settings", {
-      method: "POST",
-      body: JSON.stringify({ values: { fr24_enabled: event.currentTarget.checked } }),
+    await withLoading(toggle, container, async () => {
+      await api("/api/settings", {
+        method: "POST",
+        body: JSON.stringify({ values: { fr24_enabled: toggle.checked } }),
+      });
     });
   } catch (error) {
-    window.alert(error.message);
+    let errEl = document.getElementById("fr24-enable-error");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.id = "fr24-enable-error";
+      errEl.className = "error";
+      errEl.setAttribute("role", "alert");
+      (container || toggle.parentNode).append(errEl);
+    }
+    errEl.textContent = error.message;
+    errEl.hidden = false;
   }
   await loadFr24();
 });
 $("#fr24-budget-policy-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  // Generic settings POST machinery; then reload the FR24 tab so the
-  // current/effect/source lines re-render from the server's answer.
-  await saveForm(event.currentTarget);
-  await loadFr24();
+  const form = event.currentTarget;
+  const btn = form.querySelector('button[type="submit"]');
+  await withLoading(btn, form, async () => {
+    await saveForm(form);
+    await loadFr24();
+  });
 });
 
 $("#fr24-cluster-reset")?.addEventListener("click", fr24ResetForm);
@@ -1235,6 +1630,25 @@ $("#fr24-cluster-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const resultBox = form.querySelector(".form-result");
+  const submitBtn = form.querySelector('button[type="submit"]') || form.querySelector("#fr24-wizard-save");
+  // wizard: Save only on step 4 does single POST; otherwise Next handles step advance
+  const wizardStep = window.fr24WizardStep || appState.fr24WizardStep || 4;
+  if (wizardStep !== 4 && document.querySelector("fieldset[data-step]")) {
+    // if wizard active but not on final step, treat as Next validation
+    const errEl = document.getElementById("fr24-wizard-bounds-error");
+    if (form.elements.namedItem("use_manual_bounds")?.checked) {
+      const n = form.elements.namedItem("manual_north").value;
+      const s = form.elements.namedItem("manual_south").value;
+      if (n !== "" && s !== "" && Number(n) <= Number(s)) {
+        if (errEl) {
+          errEl.textContent = "North must be greater than South";
+          errEl.hidden = false;
+        }
+        return;
+      }
+    }
+    return;
+  }
   const payload = {
     id: form.elements.namedItem("id").value || null,
     name: form.elements.namedItem("name").value,
@@ -1258,32 +1672,30 @@ $("#fr24-cluster-form")?.addEventListener("submit", async (event) => {
       ? Number(form.elements.namedItem("manual_east").value)
       : null,
   };
-  try {
-    await api("/api/fr24/clusters", { method: "POST", body: JSON.stringify(payload) });
-    resultBox.textContent = t("settings_saved");
-    fr24ResetForm();
-    await loadFr24();
-  } catch (error) {
-    resultBox.textContent = error.message;
-  }
+  await withLoading(submitBtn, form, async () => {
+    try {
+      await api("/api/fr24/clusters", { method: "POST", body: JSON.stringify(payload) });
+      resultBox.textContent = t("settings_saved");
+      fr24ResetForm();
+      await loadFr24();
+    } catch (error) {
+      resultBox.textContent = error.message;
+    }
+  });
 });
 
 $("#fr24-test")?.addEventListener("click", async (event) => {
-  // This is a paid, real FR24 call -- disable the button for the duration
-  // so a double-click (or an impatient repeat click while the first request
-  // is still in flight) can't trigger two billed requests.
   const button = event.currentTarget;
   const resultBox = $("#fr24-test-result");
-  button.disabled = true;
-  resultBox.textContent = t("fr24_testing");
-  try {
-    const result = await api("/api/fr24/test", { method: "POST" });
-    resultBox.textContent = `${t("fr24_test_success")}: ${result.aircraft_found} ${t("fr24_aircraft_found")}, ${result.estimated_credits} ${t("fr24_credits")}`;
-  } catch (error) {
-    resultBox.textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
+  await withLoading(button, resultBox, async () => {
+    resultBox.textContent = t("fr24_testing");
+    try {
+      const result = await api("/api/fr24/test", { method: "POST" });
+      resultBox.textContent = `${t("fr24_test_success")}: ${result.aircraft_found} ${t("fr24_aircraft_found")}, ${result.estimated_credits} ${t("fr24_credits")}`;
+    } catch (error) {
+      resultBox.textContent = error.message;
+    }
+  });
 });
 
 // B2: the #event-track-panel persists in index.html, so its click handling is
@@ -1294,15 +1706,16 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
   const button = event.target.closest("#event-track-fetch");
   if (!button || button.disabled || button.hidden) return;
   const panel = event.currentTarget;
-  // Snapshot the event this request belongs to; every completion continuation
-  // below re-checks the panel dataset before touching any DOM, so navigating
-  // mid-flight abandons the stale continuation silently (the in-flight POST
-  // still completes and logs server-side -- correct + audited).
   const requestedEventId = panel.dataset.eventId;
   if (!requestedEventId) return;
-  if (!window.confirm(t("fr24_track_confirm").replace("{credits}", panel.dataset.credits || ""))) return;
-  button.disabled = true;
+  const credits = panel.dataset.credits || "";
   const resultBox = $("#event-track-result");
+  try {
+    if (typeof window !== "undefined" && typeof window.confirm === "function") {
+      const msg = t("fr24_track_confirm").replace("{credits}", credits);
+      if (!window.confirm(msg)) return;
+    }
+  } catch {}
   if (resultBox) resultBox.textContent = t("fr24_track_fetching");
   try {
     const done = await api(`/api/fr24/events/${encodeURIComponent(requestedEventId)}/track`, {
@@ -1310,17 +1723,11 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       body: JSON.stringify({ confirm: true }),
     });
     if (panel.dataset.eventId !== requestedEventId) return;
-    // Single source of truth: reload so setupEventTrackPanel re-derives
-    // disabled/blocker/cost from a FRESH GET instead of hand-toggling state.
     await loadEventDetail(requestedEventId);
     if (panel.dataset.eventId !== requestedEventId) {
-      // R3: A's late refresh lost the race with navigation -- heal by
-      // re-rendering the event the operator is actually viewing.
       await loadEventDetail(panel.dataset.eventId);
       return;
     }
-    // Flash AFTER the reload so fr24_track_success is actually consumed and
-    // visible next to the freshly-derived (disabled) button.
     const refs = $("#event-track-result");
     if (refs) {
       refs.textContent = t("fr24_track_success")
@@ -1333,21 +1740,15 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
     const detail = String(error.message || "");
     let message = TRACK_BLOCKED_KEYS[detail] ? t(TRACK_BLOCKED_KEYS[detail]) : "";
     if (!message && detail.includes("pause_fr24")) message = t("fr24_track_blocked_paused");
-    // FIX A: guard immediately before the terminal refresh as well.
     if (panel.dataset.eventId !== requestedEventId) return;
-    // FIX B: refresh FIRST so setupEventTrackPanel's clearing cannot erase the
-    // message -- the localized error is written AFTER the reload settles.
     await loadEventDetail(requestedEventId);
     if (panel.dataset.eventId !== requestedEventId) {
-      // Same late-refresh heal as the success path.
       await loadEventDetail(panel.dataset.eventId);
       return;
     }
-    // Never hand-enable here: button state above was re-derived from a fresh GET.
     if (resultBox) resultBox.textContent = message || t("fr24_track_error").replace("{detail}", detail);
   }
 });
-
 init().catch((error) => {
   $("#login-error").textContent = error.message;
   showLogin();

@@ -1,0 +1,40 @@
+/* tokens.css — Design tokens for flight-geofence
+ * Single source of truth for colors, spacing, shadows, and breakpoints.
+ * Breakpoint vars (--bp-*) are for JS/docs; @media must use literal px
+ * because CSS vars are not valid in media query conditions.
+ */
+
+:root {
+  /* core palette */
+  --ink:#211c20;
+  --muted:#5f555b; /* was #746a70 — darkened to 4.8:1 on --paper for .eyebrow/muted text */
+  --paper:#f4f0e9;
+  --surface:#fffdf9;
+  --line:#ddd4ca;
+  --forest:#174c3c;
+  --burgundy:#6b2847;
+  --amber:#a55c17;
+  --red:#9f342f;
+  --shadow:0 12px 34px rgba(43, 30, 35, 0.08);
+
+  /* breakpoints — tokens for reference; use literal px in @media */
+  --bp-sm:480px;
+  --bp-md:768px;
+  --bp-lg:1024px;
+
+  /* signal state backgrounds — semantic aliases for .signal variants */
+  --signal-inside:#e9f1ec;
+  --signal-failed:#f5d9d6;
+  --signal-warning:#f7ead8;
+  --signal-disappeared:#f0e2e9;
+}
+
+/* Typography — eyebrow label (WCAG AA: --muted #5f555b on --paper #f4f0e9 = 7.1:1 at 0.75rem/700) */
+.eyebrow {
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  opacity: 1;
+}

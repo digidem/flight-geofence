@@ -4,9 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title data-i18n="app_title">Flight Geofence Alerts</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/components.css">
+  <link rel="stylesheet" href="/static/layout.css">
 </head>
 <body>
+  <a class="skip-link" href="#view-dashboard" data-i18n="skip_link">Skip to content</a>
   <div id="login-screen" class="login-screen">
     <form id="login-form" class="login-card">
       <p class="eyebrow" data-i18n="login_title">Protected monitoring interface</p>
@@ -14,27 +17,28 @@
       <p data-i18n="login_subtitle">Use the password configured as <code>ADMIN_PASSWORD</code>.</p>
       <label><span data-i18n="login_password_label">Password</span><input id="login-password" type="password" autocomplete="current-password" required></label>
       <button class="button primary" type="submit" data-i18n="login_button">Log in</button>
-      <div id="login-error" class="error"></div>
+      <div id="login-error" class="error" role="alert" aria-live="assertive"></div>
     </form>
   </div>
 
   <div id="app" hidden>
     <header class="topbar">
       <div><p class="eyebrow" data-i18n="dashboard_subtitle">Monitoramento territorial · PoC com dados reais</p><h1 data-i18n="app_title">Flight Geofence Alerts</h1></div>
-      <div class="header-actions"><button id="lang-toggle" class="button ghost lang-toggle">PT</button><span id="phase-badge" class="badge">—</span><button id="logout" class="button ghost" data-i18n="logout_button">Sair</button></div>
+      <div class="header-actions"><button id="lang-toggle" class="button ghost lang-toggle" aria-label="Change language">PT</button><span id="phase-badge" class="badge">—</span><button id="logout" class="button ghost" data-i18n="logout_button">Sair</button></div>
     </header>
-    <nav class="tabs">
-      <button class="tab active" data-view="dashboard" data-i18n="nav_dashboard">Painel</button>
-      <button class="tab" data-view="areas" data-i18n="nav_areas">Áreas protegidas</button>
-      <button class="tab" data-view="events" data-i18n="nav_events">Revisar eventos</button>
-      <button class="tab" data-view="settings" data-i18n="nav_settings">Configurações</button>
-      <button class="tab" data-view="fr24" data-i18n="nav_fr24">FR24</button>
-      <button class="tab" data-view="logs" data-i18n="nav_logs">Logs</button>
+    <nav class="tabs" role="tablist" aria-label="Primary">
+      <button id="tab-dashboard" class="tab active" role="tab" aria-selected="true" aria-controls="view-dashboard" data-view="dashboard" data-i18n="nav_dashboard">Painel</button>
+      <button id="tab-areas" class="tab" role="tab" aria-selected="false" aria-controls="view-areas" data-view="areas" data-i18n="nav_areas">Áreas protegidas</button>
+      <button id="tab-events" class="tab" role="tab" aria-selected="false" aria-controls="view-events" data-view="events" data-i18n="nav_events">Revisar eventos</button>
+      <button id="tab-settings" class="tab" role="tab" aria-selected="false" aria-controls="view-settings" data-view="settings" data-i18n="nav_settings">Configurações</button>
+      <button id="tab-fr24" class="tab" role="tab" aria-selected="false" aria-controls="view-fr24" data-view="fr24" data-i18n="nav_fr24">FR24</button>
+      <button id="tab-logs" class="tab" role="tab" aria-selected="false" aria-controls="view-logs" data-view="logs" data-i18n="nav_logs">Logs</button>
+      <div class="nav-overflow" id="nav-overflow" hidden><button class="tab overflow-toggle" aria-haspopup="menu" aria-expanded="false">⋯ Mais</button><div class="overflow-menu" role="menu" hidden><button role="menuitem" data-view="fr24">FR24</button><button role="menuitem" data-view="logs">Logs</button></div></div>
     </nav>
 
     <main>
       <div id="spec-banner" role="note" class="spec-banner" data-i18n="spec_disclaimer_banner">Sinais não verificados — não constituem prova de pouso, desligamento deliberado, garimpo ilegal ou irregularidade.</div>
-      <section id="view-dashboard" class="view active">
+      <section id="view-dashboard" class="view active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
         <div id="warnings"></div>
         <div id="metrics" class="metric-grid"></div>
         <div class="grid two">
@@ -53,80 +57,93 @@
               <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
               <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
               <button id="refresh" class="button ghost dark" data-i18n="refresh_status">Atualizar status</button>
-              <div id="action-result" class="muted"></div>
+              <div id="action-result" class="muted" role="status" aria-live="polite"></div>
             </div>
           </article>
         </div>
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_recent">Sinais recentes</p><h2 data-i18n="dashboard_events">Eventos suspeitos</h2></div></div>
-          <div class="table-wrap"><table><thead><tr><th data-i18n="col_time">Horário</th><th data-i18n="col_signal">Sinal</th><th data-i18n="col_aircraft">Aeronave</th><th data-i18n="col_areas">Áreas</th><th data-i18n="col_telemetry">Telemetria</th><th data-i18n="col_phase">Fase</th><th data-i18n="col_review">Revisão</th></tr></thead><tbody id="dashboard-events"></tbody></table></div>
+          <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="dashboard_events">Eventos suspeitos</caption><thead><tr><th scope="col" data-i18n="col_time">Horário</th><th scope="col" data-i18n="col_signal">Sinal</th><th scope="col" data-i18n="col_aircraft">Aeronave</th><th scope="col" data-i18n="col_areas">Áreas</th><th scope="col" data-i18n="col_telemetry">Telemetria</th><th scope="col" data-i18n="col_phase">Fase</th><th scope="col" data-i18n="col_review">Revisão</th></tr></thead><tbody id="dashboard-events"></tbody></table></div>
         </article>
       </section>
 
-      <section id="view-areas" class="view">
+      <section id="view-areas" class="view" role="tabpanel" aria-labelledby="tab-areas" tabindex="0">
         <article class="panel">
           <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="areas_subtitle">Dados oficiais FUNAI + CNUC</p><h2 data-i18n="areas_title">Selecionar áreas monitoradas</h2></div>
             <div class="filters"><input id="area-search" data-i18n="areas_search" placeholder="Buscar nome, estado ou fase"><select id="area-category"><option value="" data-i18n="areas_all_types">Todos os tipos</option><option value="indigenous_territory" data-i18n="areas_indigenous">Territórios indígenas</option><option value="conservation_unit" data-i18n="areas_conservation">Unidades de conservação</option></select><select id="area-selected"><option value="" data-i18n="areas_all">Todos</option><option value="true" data-i18n="areas_selected">Selecionados</option><option value="false" data-i18n="areas_not_selected">Não selecionados</option></select><button id="area-filter" class="button secondary" data-i18n="areas_filter">Filtrar</button></div>
           </div>
-          <div class="phase-grid" style="padding-bottom:0"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" hidden></p></div>
+          <div class="phase-grid areas-instructions"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" role="alert" aria-live="assertive" hidden></p></div>
           <div class="bulk"><button id="select-all-filtered" class="button primary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><button id="deselect-all-filtered" class="button ghost dark" data-i18n="areas_deselect_filtered">Desselecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
-          <div class="table-wrap"><table><thead><tr><th data-i18n="col_monitor">Monitorar</th><th data-i18n="col_name">Nome</th><th data-i18n="col_type">Tipo</th><th data-i18n="col_state">Estado</th><th data-i18n="col_phase_category">Fase/Categoria</th><th data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
+          <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="areas_title">Selecionar áreas monitoradas</caption><thead><tr><th scope="col" data-i18n="col_monitor">Monitorar</th><th scope="col" data-i18n="col_name">Nome</th><th scope="col" data-i18n="col_type">Tipo</th><th scope="col" data-i18n="col_state">Estado</th><th scope="col" data-i18n="col_phase_category">Fase/Categoria</th><th scope="col" data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
         </article>
       </section>
 
-      <section id="view-events" class="view">
+      <section id="view-events" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="review_subtitle">Evidência de calibração</p><h2 data-i18n="review_title">Revisar eventos detectados</h2></div><div class="filters"><select id="review-filter"><option value="" data-i18n="review_all">Todas as revisões</option><option value="unreviewed" data-i18n="review_unreviewed">Não revisados</option><option value="useful" data-i18n="review_useful">Úteis</option><option value="noise" data-i18n="review_noise">Ruído</option><option value="uncertain" data-i18n="review_uncertain">Incertos</option></select><button id="review-refresh" class="button secondary" data-i18n="review_refresh">Atualizar</button></div></div>
           <div id="review-list" class="review-list"></div>
         </article>
       </section>
 
-      <section id="view-settings" class="view">
-        <div class="grid two">
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_workflow">Fluxo de trabalho</p><h2 data-i18n="settings_phase_providers">Fase e fornecedores</h2></div></div><form id="settings-core" class="form-grid">
-            <label data-i18n="settings_operating_phase">Fase operacional<select name="operating_phase"><option value="shadow" data-i18n="phase_shadow">Sombra</option><option value="review" data-i18n="phase_review">Revisão</option><option value="live" data-i18n="phase_live">Ao vivo</option></select></label>
-            <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> <span data-i18n="provider_adsb_lol_cost">ADSB.lol — dados abertos/gratuitos</span></label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> <span data-i18n="provider_airplanes_live_cost">Airplanes.live — tier gratuito não-comercial</span></label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> <span data-i18n="provider_adsbexchange_cost">ADS-B Exchange — pago</span></label></fieldset>
-            <button id="legacy-provider-warning" type="button" class="button signal" data-i18n="settings_legacy_provider_warning" hidden>flightradar24 é ignorado em FLIGHT_PROVIDERS — use a aba FR24</button>
-            <label data-i18n="settings_poll_interval">Intervalo de consulta (segundos)<input name="poll_interval_seconds" type="number" min="30" max="86400"></label>
-            <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar fluxo de trabalho</button><div class="form-result"></div>
-          </form></article>
-
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_secrets">Segredos</p><h2 data-i18n="settings_api_keys">Chaves de API</h2></div></div><form id="settings-keys" class="form-grid">
-            <label data-i18n="settings_fr24_key">Token Flightradar24<input name="flightradar24_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-            <label data-i18n="settings_adsb_key">Chave ADS-B Exchange<input name="adsbexchange_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-            <label data-i18n="settings_resend_key">Chave API Resend<input name="resend_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-            <button class="button primary" type="submit" data-i18n="settings_save_keys">Salvar chaves com segurança</button><div class="form-result"></div>
-          </form></article>
-
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_notifications">Notificações</p><h2 data-i18n="settings_email">E-mail</h2></div></div><form id="settings-email" class="form-grid">
-            <label data-i18n="settings_email_provider">Provedor de e-mail<select name="email_provider"><option value="console" data-i18n="settings_console">Pré-visualização no console</option><option value="resend">Resend</option><option value="smtp">SMTP</option></select></label>
-            <label data-i18n="settings_recipients">Destinatários, separados por vírgula<input name="alert_recipients" type="text"></label>
-            <label data-i18n="settings_sender">Remetente<input name="email_from" type="text"></label>
-            <label data-i18n="settings_smtp_host">Host SMTP<input name="smtp_host" type="text"></label><label data-i18n="settings_smtp_port">Porta SMTP<input name="smtp_port" type="number"></label><label data-i18n="settings_smtp_user">Usuário SMTP<input name="smtp_username" type="text"></label><label data-i18n="settings_smtp_pass">Senha SMTP<input name="smtp_password" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label><label class="check"><input name="smtp_starttls" type="checkbox"> <span data-i18n="settings_smtp_starttls">Usar STARTTLS</span></label>
-            <button class="button primary" type="submit" data-i18n="settings_save_email">Salvar configurações de e-mail</button><div class="form-result"></div>
-          </form></article>
-
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_detection">Detecção</p><h2 data-i18n="settings_noise">Controles de ruído</h2></div></div><form id="settings-thresholds" class="form-grid compact">
-            <label data-i18n="settings_stop_obs">Observações para parada<input name="min_inside_observations_for_stop" type="number" min="2"></label><label data-i18n="settings_stop_duration">Duração mínima da parada (segundos)<input name="stop_min_duration_seconds" type="number" min="30"></label><label data-i18n="settings_stationary_radius">Raio estacionário (metros)<input name="stationary_radius_meters" type="number" min="50"></label><label data-i18n="settings_max_stop_speed">Velocidade máxima de parada (kt)<input name="stop_max_speed_kt" type="number" min="1"></label><label data-i18n="settings_disappear_obs">Observações para desaparecimento<input name="min_inside_observations_for_disappearance" type="number" min="2"></label><label data-i18n="settings_disappear_polls">Pollings bem-sucedidos para desaparecimento<input name="disappear_after_successful_polls" type="number" min="1"></label><label data-i18n="settings_disappear_alt">Altitude máxima de desaparecimento (ft)<input name="disappear_max_altitude_ft" type="number" min="0"></label><label data-i18n="settings_outside_obs">Observações externas para fechar episódio<input name="outside_confirmation_observations" type="number" min="1" max="10"></label><label data-i18n="settings_max_emails">Limite diário de e-mails<input name="max_emails_per_day" type="number" min="1"></label>
-            <button class="button primary" type="submit" data-i18n="settings_save_thresholds">Salvar limiares</button><div class="form-result"></div>
-          </form></article>
-
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_display">Display</p><h2 data-i18n="settings_timezone">Fuso horário</h2></div></div><form id="settings-display" class="form-grid">
-            <label data-i18n="settings_language">Idioma<select id="settings-language" name="language"><option value="pt">Português</option><option value="en">English</option></select></label>
-            <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo" data-i18n="tz_brasilia">Horário de Brasília (UTC-3)</option><option value="America/Manaus" data-i18n="tz_manaus">Manaus (UTC-4)</option><option value="America/Belem" data-i18n="tz_belem">Belém (UTC-3)</option><option value="America/Rio_Branco" data-i18n="tz_riobranco">Rio Branco (UTC-5)</option><option value="America/Noronha" data-i18n="tz_noronha">Fernando de Noronha (UTC-2)</option></select></label>
-            <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar</button><div class="form-result"></div>
-          </form></article>
+      <section id="view-settings" class="view" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
+        <nav class="settings-stepper" role="tablist" aria-label="Settings steps" data-i18n-aria="settings_steps_label">
+          <button id="settings-step-tab-1" role="tab" aria-selected="true" aria-controls="settings-step-1" data-step="1" data-i18n="settings_step_operation">1 · Operação</button>
+          <button id="settings-step-tab-2" role="tab" aria-selected="false" aria-controls="settings-step-2" data-step="2" data-i18n="settings_step_detection">2 · Detecção</button>
+          <button id="settings-step-tab-3" role="tab" aria-selected="false" aria-controls="settings-step-3" data-step="3" data-i18n="settings_step_notifications">3 · Notificações</button>
+        </nav>
+        <div id="settings-step-1" class="settings-step active" role="tabpanel" aria-labelledby="settings-step-tab-1">
+          <div class="grid two">
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_workflow">Fluxo de trabalho</p><h2 data-i18n="settings_phase_providers">Fase e fornecedores</h2></div></div><form id="settings-core" class="form-grid">
+              <label data-i18n="settings_operating_phase">Fase operacional<select name="operating_phase"><option value="shadow" data-i18n="phase_shadow">Sombra</option><option value="review" data-i18n="phase_review">Revisão</option><option value="live" data-i18n="phase_live">Ao vivo</option></select></label>
+              <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> <span data-i18n="provider_adsb_lol_cost">ADSB.lol — dados abertos/gratuitos</span></label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> <span data-i18n="provider_airplanes_live_cost">Airplanes.live — tier gratuito não-comercial</span></label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> <span data-i18n="provider_adsbexchange_cost">ADS-B Exchange — pago</span></label></fieldset>
+              <button id="legacy-provider-warning" type="button" class="button signal" data-i18n="settings_legacy_provider_warning" hidden>flightradar24 é ignorado em FLIGHT_PROVIDERS — use a aba FR24</button>
+              <label data-i18n="settings_poll_interval">Intervalo de consulta (segundos)<input name="poll_interval_seconds" type="number" min="30" max="86400"></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar fluxo de trabalho</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_display">Display</p><h2 data-i18n="settings_timezone">Fuso horário</h2></div></div><form id="settings-display" class="form-grid">
+              <label data-i18n="settings_language">Idioma<select id="settings-language" name="language"><option value="pt">Português</option><option value="en">English</option></select></label>
+              <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo" data-i18n="tz_brasilia">Horário de Brasília (UTC-3)</option><option value="America/Manaus" data-i18n="tz_manaus">Manaus (UTC-4)</option><option value="America/Belem" data-i18n="tz_belem">Belém (UTC-3)</option><option value="America/Rio_Branco" data-i18n="tz_riobranco">Rio Branco (UTC-5)</option><option value="America/Noronha" data-i18n="tz_noronha">Fernando de Noronha (UTC-2)</option></select></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+          </div>
+          <div class="settings-step-nav"><span></span><button type="button" class="button secondary settings-next" data-next="2" data-i18n="settings_next">Próximo</button></div>
         </div>
-        <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
+        <div id="settings-step-2" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-2" hidden>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_detection">Detecção</p><h2 data-i18n="settings_noise">Controles de ruído</h2></div></div><form id="settings-thresholds" class="form-grid compact">
+              <label data-i18n="settings_stop_obs">Observações para parada<input name="min_inside_observations_for_stop" type="number" min="2"></label><label data-i18n="settings_stop_duration">Duração mínima da parada (segundos)<input name="stop_min_duration_seconds" type="number" min="30"></label><label data-i18n="settings_stationary_radius">Raio estacionário (metros)<input name="stationary_radius_meters" type="number" min="50"></label><label data-i18n="settings_max_stop_speed">Velocidade máxima de parada (kt)<input name="stop_max_speed_kt" type="number" min="1"></label><label data-i18n="settings_disappear_obs">Observações para desaparecimento<input name="min_inside_observations_for_disappearance" type="number" min="2"></label><label data-i18n="settings_disappear_polls">Pollings bem-sucedidos para desaparecimento<input name="disappear_after_successful_polls" type="number" min="1"></label><label data-i18n="settings_disappear_alt">Altitude máxima de desaparecimento (ft)<input name="disappear_max_altitude_ft" type="number" min="0"></label><label data-i18n="settings_outside_obs">Observações externas para fechar episódio<input name="outside_confirmation_observations" type="number" min="1" max="10"></label><label data-i18n="settings_max_emails">Limite diário de e-mails<input name="max_emails_per_day" type="number" min="1"></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_thresholds">Salvar limiares</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="1" data-i18n="settings_prev">Anterior</button><button type="button" class="button secondary settings-next" data-next="3" data-i18n="settings_next">Próximo</button></div>
+        </div>
+        <div id="settings-step-3" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-3" hidden>
+          <div class="grid two">
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_notifications">Notificações</p><h2 data-i18n="settings_email">E-mail</h2></div></div><form id="settings-email" class="form-grid">
+              <label data-i18n="settings_email_provider">Provedor de e-mail<select name="email_provider"><option value="console" data-i18n="settings_console">Pré-visualização no console</option><option value="resend">Resend</option><option value="smtp">SMTP</option></select></label>
+              <label data-i18n="settings_recipients">Destinatários, separados por vírgula<input name="alert_recipients" type="text"></label>
+              <label data-i18n="settings_sender">Remetente<input name="email_from" type="text"></label>
+              <label data-i18n="settings_smtp_host">Host SMTP<input name="smtp_host" type="text"></label><label data-i18n="settings_smtp_port">Porta SMTP<input name="smtp_port" type="number"></label><label data-i18n="settings_smtp_user">Usuário SMTP<input name="smtp_username" type="text"></label><label data-i18n="settings_smtp_pass">Senha SMTP<input name="smtp_password" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label><label class="check"><input name="smtp_starttls" type="checkbox"> <span data-i18n="settings_smtp_starttls">Usar STARTTLS</span></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_email">Salvar configurações de e-mail</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_secrets">Segredos</p><h2 data-i18n="settings_api_keys">Chaves de API</h2></div></div><form id="settings-keys" class="form-grid">
+              <label data-i18n="settings_fr24_key">Token Flightradar24<input name="flightradar24_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+              <label data-i18n="settings_adsb_key">Chave ADS-B Exchange<input name="adsbexchange_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+              <label data-i18n="settings_resend_key">Chave API Resend<input name="resend_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_keys">Salvar chaves com segurança</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+          </div>
+          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
+          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="2" data-i18n="settings_prev">Anterior</button><span></span></div>
+        </div>
       </section>
 
-      <section id="view-fr24" class="view">
+      <section id="view-fr24" class="view" role="tabpanel" aria-labelledby="tab-fr24" tabindex="0">
         <article class="panel">
-          <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_subtitle">Flightradar24 Explorer</p><h2 data-i18n="fr24_title">Clusters e orçamento de créditos</h2></div></div>
-          <div class="fr24-power" id="fr24-power">
+          <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_subtitle">Flightradar24 Explorer</p><h2 data-i18n="fr24_title">Clusters e orçamento de créditos</h2><button class="help-button" type="button" aria-label="Help about FR24 blockers" data-i18n-aria="fr24_help_label" title="Por que o FR24 não está consultando" aria-describedby="fr24-help" data-i18n-title="fr24_help_title">?</button></div></div>
+          <div id="fr24-help" class="help-text" hidden><p data-i18n="fr24_help_title">Por que o FR24 não está consultando</p><p>FR24_ENABLED desligado, token ausente, nenhum cluster ativo, ou orçamento esgotado com política pause_fr24.</p></div>
+          <div class="fr24-power" id="fr24-power" aria-busy="false">
             <label class="switch">
               <span class="sr-only" data-i18n="fr24_enable_toggle">Polling FR24 habilitado</span>
-              <input type="checkbox" id="fr24-enable-toggle">
+              <input type="checkbox" id="fr24-enable-toggle" aria-label="FR24 polling enabled">
               <span class="switch-track" aria-hidden="true"></span>
             </label>
             <div>
@@ -142,7 +159,7 @@
             <p class="muted" id="fr24-policy-source"></p>
             <p class="signal" id="fr24-policy-env-badge" hidden></p>
             <button class="button primary" type="submit" data-i18n="fr24_save_policy">Salvar política</button>
-            <div class="form-result"></div>
+            <div class="form-result" role="status" aria-live="polite"></div>
           </form>
           <div id="fr24-blockers"></div>
           <div id="fr24-status" class="metric-grid"></div>
@@ -158,45 +175,64 @@
           <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_form_subtitle">Adicionar ou editar</p><h2 data-i18n="fr24_form_title">Cluster</h2></div></div>
           <form id="fr24-cluster-form" class="form-grid">
             <input type="hidden" name="id">
-            <label data-i18n="fr24_cluster_name">Nome<input name="name" type="text" required maxlength="200"></label>
-            <label data-i18n="fr24_cluster_buffer">Buffer (km)<input name="buffer_km" type="number" min="1" max="100" value="15" step="0.1"></label>
-            <label data-i18n="fr24_cluster_min_alt">Altitude mínima (ft)<input name="min_altitude_ft" type="number" min="-2000" max="60000" value="-2000"></label>
-            <label data-i18n="fr24_cluster_max_alt">Altitude máxima (ft)<input name="max_altitude_ft" type="number" min="-2000" max="60000" value="10000"></label>
-            <fieldset><legend data-i18n="fr24_cluster_categories">Categorias FR24</legend>
-              <label class="check"><input type="checkbox" name="categories" value="T" checked> T — <span data-i18n="fr24_cat_t">aviação geral</span></label>
-              <label class="check"><input type="checkbox" name="categories" value="H" checked> H — <span data-i18n="fr24_cat_h">helicópteros</span></label>
-              <label class="check"><input type="checkbox" name="categories" value="N" checked> N — <span data-i18n="fr24_cat_n">não categorizado</span></label>
-              <label class="check"><input type="checkbox" name="categories" value="P"> P — <span data-i18n="fr24_cat_p">passageiros (custo)</span></label>
-              <label class="check"><input type="checkbox" name="categories" value="C"> C — <span data-i18n="fr24_cat_c">carga (custo)</span></label>
-              <label class="check"><input type="checkbox" name="categories" value="J"> J — <span data-i18n="fr24_cat_j">jatos executivos</span></label>
+            <div id="fr24-wizard-progress" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Cluster setup progress">Step 1 of 4</div>
+            <div id="fr24-wizard-step-label" class="muted">Step 1 of 4</div>
+            <fieldset data-step="1">
+              <legend>Step 1 · Info</legend>
+              <label data-i18n="fr24_cluster_name">Nome<input name="name" type="text" required maxlength="200"></label>
+              <label class="check"><input type="checkbox" name="enabled" checked> <span data-i18n="fr24_cluster_enabled">Ativo</span></label>
             </fieldset>
-            <label class="check"><input type="checkbox" name="enabled" checked> <span data-i18n="fr24_cluster_enabled">Ativo</span></label>
-            <label class="check"><input type="checkbox" id="fr24-manual-bounds" name="use_manual_bounds"> <span data-i18n="fr24_manual_bounds">Substituir limites manualmente</span></label>
-            <div id="fr24-manual-bounds-fields" class="form-grid compact" hidden>
-              <label data-i18n="fr24_bounds_north">Norte<input name="manual_north" type="number" step="0.000001"></label>
-              <label data-i18n="fr24_bounds_south">Sul<input name="manual_south" type="number" step="0.000001"></label>
-              <label data-i18n="fr24_bounds_west">Oeste<input name="manual_west" type="number" step="0.000001"></label>
-              <label data-i18n="fr24_bounds_east">Leste<input name="manual_east" type="number" step="0.000001"></label>
+            <fieldset data-step="2" hidden>
+              <legend>Step 2 · Buffer &amp; altitude</legend>
+              <label data-i18n="fr24_cluster_buffer">Buffer (km)<input name="buffer_km" type="number" min="1" max="100" value="15" step="0.1"></label>
+              <label data-i18n="fr24_cluster_min_alt">Altitude mínima (ft)<input name="min_altitude_ft" type="number" min="-2000" max="60000" value="-2000"></label>
+              <label data-i18n="fr24_cluster_max_alt">Altitude máxima (ft)<input name="max_altitude_ft" type="number" min="-2000" max="60000" value="10000"></label>
+            </fieldset>
+            <fieldset data-step="3" hidden>
+              <legend>Step 3 · Categories &amp; bounds</legend>
+              <fieldset><legend data-i18n="fr24_cluster_categories">Categorias FR24</legend>
+                <label class="check"><input type="checkbox" name="categories" value="T" checked> T — <span data-i18n="fr24_cat_t">aviação geral</span></label>
+                <label class="check"><input type="checkbox" name="categories" value="H" checked> H — <span data-i18n="fr24_cat_h">helicópteros</span></label>
+                <label class="check"><input type="checkbox" name="categories" value="N" checked> N — <span data-i18n="fr24_cat_n">não categorizado</span></label>
+                <label class="check"><input type="checkbox" name="categories" value="P"> P — <span data-i18n="fr24_cat_p">passageiros (custo)</span></label>
+                <label class="check"><input type="checkbox" name="categories" value="C"> C — <span data-i18n="fr24_cat_c">carga (custo)</span></label>
+                <label class="check"><input type="checkbox" name="categories" value="J"> J — <span data-i18n="fr24_cat_j">jatos executivos</span></label>
+              </fieldset>
+              <label class="check"><input type="checkbox" id="fr24-manual-bounds" name="use_manual_bounds"> <span data-i18n="fr24_manual_bounds">Substituir limites manualmente</span></label>
+              <div id="fr24-manual-bounds-fields" class="form-grid compact" hidden>
+                <label data-i18n="fr24_bounds_north">Norte<input name="manual_north" type="number" step="0.000001"></label>
+                <label data-i18n="fr24_bounds_south">Sul<input name="manual_south" type="number" step="0.000001"></label>
+                <label data-i18n="fr24_bounds_west">Oeste<input name="manual_west" type="number" step="0.000001"></label>
+                <label data-i18n="fr24_bounds_east">Leste<input name="manual_east" type="number" step="0.000001"></label>
+              </div>
+              <div id="fr24-wizard-bounds-error" class="error" role="alert" hidden></div>
+            </fieldset>
+            <fieldset data-step="4" hidden>
+              <legend>Step 4 · Areas</legend>
+              <fieldset><legend data-i18n="fr24_cluster_areas">Áreas membro (dentre as selecionadas)</legend><div id="fr24-area-picker" class="table-wrap area-picker"></div></fieldset>
+            </fieldset>
+            <div class="wizard-nav">
+              <button type="button" id="fr24-wizard-prev" class="button ghost dark" hidden>Prev</button>
+              <button type="button" id="fr24-wizard-next" class="button secondary">Next</button>
+              <button type="submit" id="fr24-wizard-save" class="button primary" hidden data-i18n="fr24_save_cluster">Salvar cluster</button>
+              <button type="button" id="fr24-cluster-reset" class="button ghost dark" data-i18n="fr24_new_cluster">Novo cluster</button>
             </div>
-            <fieldset><legend data-i18n="fr24_cluster_areas">Áreas membro (dentre as selecionadas)</legend><div id="fr24-area-picker" class="table-wrap" style="max-height:220px;overflow:auto"></div></fieldset>
-            <button class="button primary" type="submit" data-i18n="fr24_save_cluster">Salvar cluster</button>
-            <button class="button ghost dark" type="button" id="fr24-cluster-reset" data-i18n="fr24_new_cluster">Novo cluster</button>
-            <div class="form-result"></div>
+            <div class="form-result" role="status" aria-live="polite"></div>
           </form>
         </article>
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_connectivity">Conectividade</p><h2 data-i18n="fr24_test_title">Testar Flightradar24</h2></div></div>
           <div class="actions">
             <p class="muted" data-i18n="fr24_test_cost_note">Executa uma consulta mínima (limite=1) no primeiro cluster ativo — custo estimado de até 6 créditos.</p>
-            <button id="fr24-test" class="button secondary" data-i18n="fr24_test_button">Testar conexão</button>
-            <div id="fr24-test-result" class="muted"></div>
+            <button id="fr24-test" class="button secondary" data-i18n="fr24_test_button" aria-busy="false">Testar conexão</button>
+            <div id="fr24-test-result" class="muted" role="status" aria-live="polite"></div>
           </div>
         </article>
       </section>
 
-      <section id="view-logs" class="view">
+      <section id="view-logs" class="view" role="tabpanel" aria-labelledby="tab-logs" tabindex="0">
         <article class="panel">
-          <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="logs_subtitle">Auditoria de chamadas e observações</p><h2 data-i18n="logs_title">Linha do tempo de logs</h2></div>
+          <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="logs_subtitle">Auditoria de chamadas e observações</p><h2 data-i18n="logs_title">Linha do tempo de logs</h2><button class="help-button" type="button" aria-label="Help about kinds and dispositions" data-i18n-aria="logs_help_label" title="O que significam os tipos e disposições?" aria-describedby="logs-help" data-i18n-title="logs_help_title">?</button></div>
             <div class="filters">
               <select id="logs-kind">
                 <option value="all" data-i18n="logs_filter_kind_all">Tudo</option>
@@ -210,31 +246,32 @@
               <button id="logs-filter" class="button secondary" data-i18n="logs_filter_apply">Filtrar</button>
             </div>
           </div>
-          <p id="logs-error" class="error" hidden></p>
-          <div class="bulk"><span id="logs-summary" class="muted"></span></div>
-          <div class="table-wrap"><table><thead><tr>
-            <th data-i18n="logs_col_time">Horário</th>
-            <th data-i18n="logs_col_kind">Tipo</th>
-            <th data-i18n="logs_col_provider">Fornecedor</th>
-            <th data-i18n="logs_col_region">Região</th>
-            <th data-i18n="logs_col_detail">Detalhe</th>
-            <th data-i18n="logs_col_aircraft">Aeronave</th>
-            <th data-i18n="logs_col_disposition">Disposição</th>
+          <div id="logs-help" class="help-text" hidden><p data-i18n="logs_help_kinds">Tipos: Chamada = requisição ao provedor; Observação = posição de aeronave; Detecção = aeronave dentro de área.</p><p data-i18n="logs_help_dispositions">Disposições: Dentro/Fora indicam se a aeronave estava em área protegida; stale/pending etc explicam transições de episódio.</p></div>
+          <p id="logs-error" class="error" role="alert" aria-live="assertive" hidden></p>
+          <div class="bulk"><span id="logs-summary" class="muted" role="status" aria-live="polite"></span></div>
+          <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="logs_title">Linha do tempo de logs</caption><thead><tr>
+            <th scope="col" data-i18n="logs_col_time">Horário</th>
+            <th scope="col" data-i18n="logs_col_kind">Tipo</th>
+            <th scope="col" data-i18n="logs_col_provider">Fornecedor</th>
+            <th scope="col" data-i18n="logs_col_region">Região</th>
+            <th scope="col" data-i18n="logs_col_detail">Detalhe</th>
+            <th scope="col" data-i18n="logs_col_aircraft">Aeronave</th>
+            <th scope="col" data-i18n="logs_col_disposition">Disposição</th>
           </tr></thead><tbody id="logs-body"></tbody></table></div>
           <div class="actions">
-            <button id="logs-prev" class="button ghost dark" data-i18n="logs_prev">Anterior</button>
-            <button id="logs-next" class="button ghost dark" data-i18n="logs_next">Próxima</button>
+            <button id="logs-prev" class="button ghost dark" data-i18n="logs_prev" aria-label="Previous page">Anterior</button>
+            <button id="logs-next" class="button ghost dark" data-i18n="logs_next" aria-label="Next page">Próxima</button>
           </div>
         </article>
       </section>
 
-      <section id="view-event-detail" class="view">
+      <section id="view-event-detail" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
         <article class="panel">
           <div id="event-detail-content"></div>
           <div id="event-track-panel" class="actions" hidden>
             <p id="event-track-cost" class="muted"></p>
             <button id="event-track-fetch" class="button secondary" data-i18n="fr24_track_button" hidden>Buscar rastreamento do voo</button>
-            <div id="event-track-result" class="muted" aria-live="polite"></div>
+            <div id="event-track-result" class="muted" role="status" aria-live="polite"></div>
           </div>
         </article>
       </section>
