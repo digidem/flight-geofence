@@ -1,6 +1,6 @@
 FROM python:3.12-slim-bookworm
 
-ARG APP_VERSION=0.8.1
+ARG APP_VERSION=0.8.2
 
 LABEL org.opencontainers.image.title="Flight Geofence Alerts" \
       org.opencontainers.image.description="Protected-area aircraft monitoring proof of concept" \
