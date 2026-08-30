@@ -24,14 +24,14 @@ Known pending items as of 2026-08-29. Not a backlog — just what's open.
 
 ## Data hygiene
 
-- [ ] **Geometry leak in `poll_runs.error_message`.** 695 rows in production
-      contain raw region coordinates from httpx's quoted 429 error text
-      (e.g. `.../v2/point/0.280901/-52.592973/200.0`). `_scrub_log_message`
-      exists (`app/database.py`) and is already wired into
-      `record_provider_call`, but not into the two `poll_runs` write sites
-      at `app/main.py:306` and `:314`. Same bug class fixed in 0.6.1 for a
-      different table; needs the scrub applied here too, plus a backfill of
-      the 695 existing rows.
+- [ ] **Geometry leak in `poll_runs.error_message`.** Code fix merged in PR
+      #11 (both `_run_coverage_cycle_locked` write sites now pass through
+      `_scrub_log_message`). Remaining — deploy-then-scrub ordering matters:
+      1. Merge, release, and deploy the fixed image.
+      2. Backfill the 695 pre-fix production rows per
+         `README.md § Poll-run error scrub` (backup → dry-run → apply; the
+         script is idempotent, so re-running after any late raw write is safe).
+      3. Check this item off.
 
 ## Security follow-up
 

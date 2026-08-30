@@ -642,6 +642,19 @@ Choose a destination:
 
 Back up before upgrading. Do not change `APP_SECRET_KEY` between deployments unless you are intentionally discarding encrypted UI configuration.
 
+### Poll-run error scrub
+
+Rows written before the 0.6.x fix can carry raw provider URLs (region
+geometry) in `poll_runs.error_message`. One-time, operator-run backfill --
+take a backup first (`./scripts/backup.sh`), then preview and apply (safe to
+re-run; it is idempotent). `scripts/` is not copied into the image, so inside
+the container the script is piped over stdin, like `backup.sh` does:
+
+```bash
+docker compose exec -T flight-monitor python - --dry-run < scripts/scrub_poll_runs.py
+docker compose exec -T flight-monitor python - < scripts/scrub_poll_runs.py
+```
+
 ### Memory watch
 
 `./scripts/rss_watch.sh` takes a read-only RSS sample of the running prod
@@ -695,6 +708,7 @@ For security findings, avoid opening a public issue containing credentials, exac
 │   └── static/              # private table-first frontend
 ├── scripts/
 │   ├── backup.sh            # consistent SQLite backup
+│   ├── scrub_poll_runs.py   # one-time error_message coordinate scrub
 │   ├── rss_watch.sh         # read-only RSS sampler for issue #4
 │   └── check_external_links.py  # optional manual link checker
 ├── tests/                   # unit and integration tests
