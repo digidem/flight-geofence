@@ -703,7 +703,7 @@ function translateCategory(category) {
 
 const FLIGHTAWARE_FRESH_MS = 24 * 60 * 60 * 1000;
 
-function aircraftHexLinks(hex, provider, occurredAt) {
+function aircraftHexLinks(hex, provider, occurredAt, registration) {
   if (!hex) return [];
   const h = hex.trim().toLowerCase();
   if (h.startsWith("~")) return [];
@@ -723,8 +723,17 @@ function aircraftHexLinks(hex, provider, occurredAt) {
   }[provider || ""] || "ADSB.lol";
   const preferredIdx = globes.findIndex((g) => g.label === preferred);
   if (preferredIdx > 0) globes.unshift(...globes.splice(preferredIdx, 1));
-  // FlightAware's hex page resolves only for aircraft flying now or very
-  // recently; lead with it for fresh events, otherwise trail it.
+  // FlightAware's /live/modes/{hex}/redirect only resolves while FlightAware
+  // ties the hex to a current flight and rots within hours of landing. The
+  // registration page (full flight history) always resolves, so when the
+  // event knows the registration it leads unconditionally.
+  const reg = (registration || "").trim();
+  const regValid = reg.length >= 2 && /^[A-Z0-9-]+$/.test(reg.toUpperCase()) && /[A-Z]/.test(reg.toUpperCase());
+  const flightawareModes = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
+  if (regValid) {
+    const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/flight/${reg.toUpperCase()}` };
+    return [flightaware, ...globes];
+  }
   let ts = NaN;
   if (occurredAt) {
     const s = String(occurredAt).trim();
@@ -734,8 +743,7 @@ function aircraftHexLinks(hex, provider, occurredAt) {
     ts = Date.parse(normalized);
   }
   const fresh = Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts <= FLIGHTAWARE_FRESH_MS;
-  const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
-  return fresh ? [flightaware, ...globes] : [...globes, flightaware];
+  return fresh ? [flightawareModes, ...globes] : [...globes, flightawareModes];
 }
 
 function registrationLinks(registration) {
@@ -805,7 +813,7 @@ function providerLinks(providerId) {
 
 function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);
@@ -837,7 +845,7 @@ async function loadEventDetail(eventId) {
       container.innerHTML = `<p class="muted">Event not found.</p>`;
       return;
     }
-    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
+    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
     const regLinks = registrationLinks(event.registration);
     const csLinks = callsignLinks(event.callsign);
     const posLinks = positionLinks(event.latitude, event.longitude);
@@ -1063,7 +1071,7 @@ async function bulkFiltered(selected) {
 }
 
 function reviewCard(event) {
-  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
     : escapeHtml(event.aircraft_hex.toUpperCase());
@@ -1203,7 +1211,7 @@ function logsDetailCell(row) {
 function logsAircraftCell(row) {
   if (row.kind !== "observation" || !row.aircraft_hex) return "—";
   const hex = row.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(row.aircraft_hex, row.provider, row.at);
+  const hexLinks = aircraftHexLinks(row.aircraft_hex, row.provider, row.at, row.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${escapeHtml(hexLinks[0].url)}" target="_blank" rel="noopener noreferrer" class="log-aircraft-link">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);

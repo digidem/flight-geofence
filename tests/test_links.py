@@ -55,6 +55,34 @@ class TestAircraftHexLinks:
         links = aircraft_hex_links("e49abc", "adsb_lol", edge)
         assert links[0].label == "FlightAware"
 
+    def test_registration_leads_flightaware_aircraft_page(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e494d5", "adsb_lol", self.STALE, "PT-JLL")
+        assert [link.label for link in links] == [
+            "FlightAware", "ADSB.lol", "ADS-B Exchange", "Airplanes.live",
+        ]
+        assert links[0].url == "https://www.flightaware.com/live/flight/PT-JLL"
+
+    def test_registration_overrides_freshness(self):
+        from datetime import datetime, timedelta
+
+        from app.links import aircraft_hex_links
+        fresh = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        links = aircraft_hex_links("e494d5", "adsb_lol", fresh, "PT-JLL")
+        assert links[0].url == "https://www.flightaware.com/live/flight/PT-JLL"
+
+    def test_registration_is_trimmed_and_uppercased(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e494d5", "adsb_lol", self.STALE, "  pt-jll  ")
+        assert links[0].url == "https://www.flightaware.com/live/flight/PT-JLL"
+
+    def test_invalid_registration_falls_back_to_freshness_ordering(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", "adsb_lol", self.STALE, "1")
+        assert links[0].label == "ADSB.lol"
+        assert links[-1].label == "FlightAware"
+        assert links[-1].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
+
     def test_airplanes_live_events_lead_with_own_globe(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("e49abc", "airplanes_live", self.STALE)

@@ -98,9 +98,8 @@ vm.createContext(sandbox);
 
 vm.runInContext(source, sandbox, { filename: "app.js" });
 
-const linksOf = (hex, provider, occurredAt) =>
-  vm.runInContext("aircraftHexLinks", sandbox)(hex, provider, occurredAt);
-
+const linksOf = (hex, provider, occurredAt, registration) =>
+  vm.runInContext("aircraftHexLinks", sandbox)(hex, provider, occurredAt, registration);
 let failures = 0;
 function check(name, condition) {
   if (condition) {
@@ -120,6 +119,38 @@ const APLANES = "Airplanes.live";
 const now = Date.now();
 const hoursAgo = (h) => new Date(now - h * 3600 * 1000).toISOString();
 const hoursFromNow = (h) => new Date(now + h * 3600 * 1000).toISOString();
+// --- registration known: FlightAware aircraft page leads unconditionally ---
+// The /live/modes/{hex}/redirect rots within hours of landing; the
+// registration page always resolves, so it wins whenever known.
+check(
+  "stale with registration: FlightAware aircraft page first",
+  JSON.stringify(labels(linksOf("e494d5", "adsb_lol", hoursAgo(25), "PT-JLL"))) ===
+    JSON.stringify([FA, LOL, ADSBX, APLANES]),
+);
+check(
+  "fresh with registration: FlightAware aircraft page first (no modes redirect)",
+  JSON.stringify(labels(linksOf("e494d5", "adsb_lol", hoursAgo(1), "PT-JLL"))) ===
+    JSON.stringify([FA, LOL, ADSBX, APLANES]),
+);
+check(
+  "registration URL keeps original format",
+  linksOf("e494d5", "adsb_lol", hoursAgo(25), "PT-JLL")[0].url ===
+    "https://www.flightaware.com/live/flight/PT-JLL",
+);
+check(
+  "registration is trimmed and uppercased",
+  linksOf("e494d5", "adsb_lol", hoursAgo(25), "  pt-jll  ")[0].url ===
+    "https://www.flightaware.com/live/flight/PT-JLL",
+);
+check(
+  "invalid registration falls back to freshness ordering",
+  labels(linksOf("e49abc", "adsb_lol", hoursAgo(25), "1"))[0] === LOL,
+);
+check(
+  "empty registration falls back to freshness ordering",
+  labels(linksOf("e49abc", "adsb_lol", hoursAgo(25), ""))[0] === LOL,
+);
+
 
 // --- fresh events lead with FlightAware -----------------------------------
 check(

@@ -191,13 +191,17 @@ def aircraft_hex_links(
     hex_code: str | None,
     provider: str | None = None,
     occurred_at: str | None = None,
+    registration: str | None = None,
 ) -> list[InvestigationLink]:
     """Tracking-service links for a validated ICAO 24-bit address.
 
-    Ordered by what will resolve: FlightAware (full flight history, but
-    only resolvable for aircraft flying now or very recently) first when
-    the event is fresh; the observing provider's globe first otherwise,
-    since that network is guaranteed to know the hex.
+    Ordered by what will resolve. FlightAware's /live/modes/{hex}/redirect
+    only resolves while FlightAware ties the hex to a current flight and
+    rots within hours of landing, so it is used only as a fallback; the
+    FlightAware registration page (full flight history, always resolvable)
+    leads whenever the event carries a registration. The community globes
+    resolve identity for any hex their network has ever seen, grounded or
+    not, with the observing provider's globe first.
     """
     if not hex_code:
         return []
@@ -214,13 +218,23 @@ def aircraft_hex_links(
     ]
     preferred = _PROVIDER_GLOBES.get(provider or "", "ADSB.lol")
     globes.sort(key=lambda link: link.label != preferred)
-    flightaware = InvestigationLink(
-        "FlightAware",
-        f"https://www.flightaware.com/live/modes/{h}/redirect",
-        "live_tracking",
-        1,
-    )
-    ordered = [flightaware, *globes] if _event_is_fresh(occurred_at) else [*globes, flightaware]
+    reg_clean = registration.strip() if registration else ""
+    if reg_clean and _is_valid_registration(reg_clean):
+        flightaware = InvestigationLink(
+            "FlightAware",
+            f"https://www.flightaware.com/live/flight/{reg_clean.upper()}",
+            "live_tracking",
+            1,
+        )
+        ordered = [flightaware, *globes]
+    else:
+        flightaware = InvestigationLink(
+            "FlightAware",
+            f"https://www.flightaware.com/live/modes/{h}/redirect",
+            "live_tracking",
+            1,
+        )
+        ordered = [flightaware, *globes] if _event_is_fresh(occurred_at) else [*globes, flightaware]
     return [
         InvestigationLink(link.label, link.url, link.kind, position)
         for position, link in enumerate(ordered, start=1)
