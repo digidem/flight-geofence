@@ -701,16 +701,51 @@ function translateCategory(category) {
   return t(mapping[category] || category);
 }
 
-function aircraftHexLinks(hex) {
+const FLIGHTAWARE_FRESH_MS = 24 * 60 * 60 * 1000;
+
+function aircraftHexLinks(hex, provider, occurredAt, registration) {
   if (!hex) return [];
   const h = hex.trim().toLowerCase();
   if (h.startsWith("~")) return [];
   if (!/^[0-9a-f]{6}$/.test(h)) return [];
-  return [
+  const globes = [
     { label: "ADSB.lol", url: `https://globe.adsb.lol/?icao=${h}` },
     { label: "ADS-B Exchange", url: `https://globe.adsbexchange.com/?icao=${h}` },
     { label: "Airplanes.live", url: `https://globe.airplanes.live/?icao=${h}` },
   ];
+  // The observing provider's globe is guaranteed to know the hex; FR24 has
+  // no public globe, so fall back to ADS-B Exchange (broadest coverage).
+  const preferred = {
+    adsb_lol: "ADSB.lol",
+    adsbexchange: "ADS-B Exchange",
+    airplanes_live: "Airplanes.live",
+    flightradar24: "ADS-B Exchange",
+  }[provider || ""] || "ADSB.lol";
+  const preferredIdx = globes.findIndex((g) => g.label === preferred);
+  if (preferredIdx > 0) globes.unshift(...globes.splice(preferredIdx, 1));
+  // FlightAware's /live/modes/{hex}/redirect only resolves while FlightAware
+  // ties the hex to a current flight and rots within hours of landing. The
+  // registration page (full flight history) always resolves, so when the
+  // event knows the registration it leads unconditionally.
+  const reg = (registration || "").trim();
+  // Mirror Python's _is_valid_registration: validate the dehyphenated form.
+  const regNorm = reg.toUpperCase().replace(/-/g, "");
+  const regValid = regNorm.length >= 2 && /^[A-Z0-9]+$/.test(regNorm) && /[A-Z]/.test(regNorm);
+  const flightawareModes = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
+  if (regValid) {
+    const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/flight/${reg.toUpperCase()}` };
+    return [flightaware, ...globes];
+  }
+  let ts = NaN;
+  if (occurredAt) {
+    const s = String(occurredAt).trim();
+    // Python's builder treats timezone-less timestamps as UTC; mirror that
+    // so both builders agree regardless of the browser's local timezone.
+    const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/.test(s) ? s : `${s}Z`;
+    ts = Date.parse(normalized);
+  }
+  const fresh = Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts <= FLIGHTAWARE_FRESH_MS;
+  return fresh ? [flightawareModes, ...globes] : [...globes, flightawareModes];
 }
 
 function registrationLinks(registration) {
@@ -780,7 +815,7 @@ function providerLinks(providerId) {
 
 function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);
@@ -812,7 +847,7 @@ async function loadEventDetail(eventId) {
       container.innerHTML = `<p class="muted">Event not found.</p>`;
       return;
     }
-    const hexLinks = aircraftHexLinks(event.aircraft_hex);
+    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
     const regLinks = registrationLinks(event.registration);
     const csLinks = callsignLinks(event.callsign);
     const posLinks = positionLinks(event.latitude, event.longitude);
@@ -1038,7 +1073,7 @@ async function bulkFiltered(selected) {
 }
 
 function reviewCard(event) {
-  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
     : escapeHtml(event.aircraft_hex.toUpperCase());
@@ -1178,7 +1213,7 @@ function logsDetailCell(row) {
 function logsAircraftCell(row) {
   if (row.kind !== "observation" || !row.aircraft_hex) return "—";
   const hex = row.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(row.aircraft_hex);
+  const hexLinks = aircraftHexLinks(row.aircraft_hex, row.provider, row.at, row.registration);
   const hexDisplay = hexLinks.length
     ? `<a href="${escapeHtml(hexLinks[0].url)}" target="_blank" rel="noopener noreferrer" class="log-aircraft-link">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);

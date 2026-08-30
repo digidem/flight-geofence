@@ -5,6 +5,7 @@ plain text contain correct URLs and do not contain broken patterns.
 """
 
 import os
+from datetime import UTC
 
 # Ensure env before any app imports
 os.environ.setdefault("ADMIN_PASSWORD", "correct-horse-battery-staple")
@@ -67,6 +68,40 @@ class TestEmailHtmlLinks:
     def test_adsb_lol_hex_url(self):
         html = self._html()
         assert "globe.adsb.lol/?icao=e49abc" in html
+
+    def test_flightaware_registration_page_leads_when_known(self):
+        html = self._html()
+        fa = html.index("flightaware.com/live/flight/PT-MEJ")
+        assert fa < html.index("globe.adsb.lol/?icao=e49abc")
+        assert fa < html.index("globe.adsbexchange.com/?icao=e49abc")
+
+    def test_flightaware_hex_redirect_without_registration(self):
+        html = self._html(_make_event(registration=None))
+        assert "flightaware.com/live/modes/e49abc/redirect" in html
+
+    def test_stale_no_registration_email_lists_globe_before_hex_redirect(self):
+        html = self._html(_make_event(registration=None))
+        assert html.index("globe.adsb.lol/?icao=e49abc") < html.index("flightaware.com/live/modes/e49abc")
+
+    def test_fresh_no_registration_email_lists_hex_redirect_first(self):
+        from datetime import datetime, timedelta
+        fresh = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        html = self._html(_make_event(registration=None, occurred_at=fresh))
+        fa = html.index("flightaware.com/live/modes/e49abc")
+        assert fa < html.index("globe.adsb.lol/?icao=e49abc")
+        assert fa < html.index("globe.adsbexchange.com/?icao=e49abc")
+
+    def test_fresh_registration_event_plain_text_lists_aircraft_page_first(self):
+        plain = self._plain()
+        fa = plain.index("flightaware.com/live/flight/PT-MEJ")
+        assert fa < plain.index("globe.adsb.lol/?icao=e49abc")
+
+    def test_stale_fr24_event_email_keeps_adsbexchange_before_adsb_lol(self):
+        html = self._html(_make_event(provider="flightradar24"))
+        fa = html.index("flightaware.com/live/flight/PT-MEJ")
+        assert fa < html.index("globe.adsbexchange.com/?icao=e49abc")
+        assert html.index("globe.adsbexchange.com/?icao=e49abc") < html.index("globe.adsb.lol/?icao=e49abc")
+        assert "flightaware.com/live/modes/e49abc" not in html
 
     def test_adsbexchange_hex_url(self):
         html = self._html()
