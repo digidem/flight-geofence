@@ -1,4 +1,4 @@
-# Validation record — v0.8.2
+# Validation record — v0.8.3
 
 ## Completed in the build environment
 
