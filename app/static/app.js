@@ -1581,6 +1581,12 @@ $$(".tab").forEach((tab) => {
       target.classList.add("active");
       try { target.focus(); } catch {}
     }
+    // Update skip-link target so keyboard users jump into the active view
+    // instead of the originally-hardcoded #view-dashboard (issue #13).
+    const skipLink = document.querySelector(".skip-link");
+    if (skipLink && tab.dataset.view) {
+      try { skipLink.setAttribute("href", `#view-${tab.dataset.view}`); } catch {}
+    }
     const containerMap = {
       areas: $("#areas-body"),
       events: $("#review-list"),
@@ -1599,6 +1605,21 @@ $$(".tab").forEach((tab) => {
       if (tab.dataset.view === "logs") await loadLogs();
     } finally {
       if (c) try { c.removeAttribute("aria-busy"); } catch {}
+    }
+  });
+  // Home/End jump focus to the first/last primary tab (issue #13). Skips
+  // the overflow toggle (it shares class="tab" but has no `data-view`).
+  tab.addEventListener("keydown", (event) => {
+    if (!tab.dataset.view) return;
+    const primaryTabs = $$(".tab").filter((el) => el.dataset.view);
+    if (event.key === "Home") {
+      event.preventDefault();
+      const first = primaryTabs[0];
+      if (first) try { first.focus(); } catch {}
+    } else if (event.key === "End") {
+      event.preventDefault();
+      const last = primaryTabs[primaryTabs.length - 1];
+      if (last) try { last.focus(); } catch {}
     }
   });
 });
@@ -1861,13 +1882,19 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
   const input = $("#cmd-input");
   const results = $("#cmd-results");
   if (!palette || !input || !results) return;
+  // Order mirrors the visible tab bar (issue #13): dashboard → events → areas
+  // → settings → fr24 → logs. The visible label comes from `t(v.i18n)`
+  // (preferred) and `v.label` is the PT fallback used both when the i18n
+  // key is missing AND as an extra corpus entry in the palette's fuzzy
+  // search filter (`app/static/app.js` `renderPalette()`), so users can
+  // still find "Painel" / "Revisar eventos" if they remember the old names.
   const VIEWS = [
-    {id:"dashboard", label:"Dashboard", i18n:"nav_dashboard"},
-    {id:"areas", label:"Áreas protegidas", i18n:"nav_areas"},
-    {id:"events", label:"Revisar eventos", i18n:"nav_events"},
+    {id:"dashboard", label:"Painel", i18n:"nav_dashboard"},
+    {id:"events", label:"Eventos", i18n:"nav_events"},
+    {id:"areas", label:"Áreas", i18n:"nav_areas"},
     {id:"settings", label:"Configurações", i18n:"nav_settings"},
     {id:"fr24", label:"FR24", i18n:"nav_fr24"},
-    {id:"logs", label:"Logs", i18n:"nav_logs"},
+    {id:"logs", label:"Registros", i18n:"nav_logs"},
   ];
   let prevFocus = null;
   function openPalette(){

@@ -57,9 +57,9 @@ TRANSLATIONS = {
         "email_unavailable": "Indisponível",
         "email_footer": "Alertas de Geovoo de Voo — Monitoramento territorial",
         # Navigation
-        "nav_dashboard": "Painel",
-        "nav_areas": "Áreas protegidas",
-        "nav_events": "Revisar eventos",
+        "nav_dashboard": "Monitoramento",
+        "nav_areas": "Áreas",
+        "nav_events": "Eventos",
         "nav_settings": "Configurações",
         "skip_link": "Pular para o conteúdo",
         # Login
@@ -483,9 +483,9 @@ TRANSLATIONS = {
         "email_unavailable": "Unavailable",
         "email_footer": "Flight Geofence Alerts — Territorial monitoring",
         # Navigation
-        "nav_dashboard": "Dashboard",
-        "nav_areas": "Protected areas",
-        "nav_events": "Review events",
+        "nav_dashboard": "Monitoring",
+        "nav_areas": "Areas",
+        "nav_events": "Events",
         "nav_settings": "Settings",
         "skip_link": "Skip to content",
         # Login
