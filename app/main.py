@@ -22,7 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import fr24_credits
 from .auth import check_password, require_auth
-from .boundary_sync import sync_boundaries
+from .boundary_sync import cleanup_orphaned_tmp, sync_boundaries
 from .config import env_settings
 from .coverage import regenerate_query_regions
 from .database import (
@@ -33,6 +33,7 @@ from .database import (
     cleanup_logs,
     cleanup_provider_events,
     cleanup_stale_states,
+    consecutive_sync_failures,
     count_events,
     credits_used_this_cycle,
     database_ok,
@@ -175,8 +176,29 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_SYNC_BACKOFF_SCHEDULE_HOURS = (1, 6, 24)  # consecutive failures -> hours
+
+
+def _sync_backoff_hours() -> int:
+    failures = consecutive_sync_failures()
+    if failures <= 0:
+        return 0
+    idx = min(failures - 1, len(_SYNC_BACKOFF_SCHEDULE_HOURS) - 1)
+    return _SYNC_BACKOFF_SCHEDULE_HOURS[idx]
+
+
 def _sync_due() -> bool:
     sync = latest_sync()
+    backoff_hours = _sync_backoff_hours()
+    if backoff_hours > 0 and sync:
+        # Latest row is a failure: hold off until its backoff window has
+        # elapsed. An unparseable timestamp is treated as due.
+        try:
+            started = datetime.fromisoformat(sync["started_at"])
+        except ValueError:
+            return True
+        if utc_now() - started < timedelta(hours=backoff_hours):
+            return False
     if not sync or not sync.get("success") or not sync.get("completed_at"):
         return True
     try:
@@ -348,6 +370,12 @@ async def polling_loop() -> None:
 async def lifespan(app: FastAPI):
     cfg.validate_runtime_security()
     init_db()
+    try:
+        removed = cleanup_orphaned_tmp()
+        if removed:
+            logger.info("Cleaned up %d orphaned tmp entries", removed)
+    except Exception:
+        logger.exception("Orphaned tmp cleanup failed")
     background_tasks.clear()
     background_tasks.extend(
         [
@@ -614,6 +642,7 @@ async def areas_selection(request: Request, payload: SelectionPayload):
 @app.post("/api/boundaries/sync")
 async def boundaries_sync(request: Request):
     require_auth(request)
+    # Manual sync bypasses failure backoff by design: operator intent overrides.
     return await run_boundary_sync()
 
 
