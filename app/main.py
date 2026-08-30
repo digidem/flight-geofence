@@ -192,12 +192,16 @@ def _sync_due() -> bool:
     backoff_hours = _sync_backoff_hours()
     if backoff_hours > 0 and sync:
         # Latest row is a failure: hold off until its backoff window has
-        # elapsed. An unparseable timestamp is treated as due.
+        # elapsed. Anchor at completed_at when present (full quiet period
+        # regardless of how long the failed sync ran); fall back to
+        # started_at for rows killed before they could record completion.
+        # An unparseable timestamp is treated as due.
+        anchor_raw = sync.get("completed_at") or sync.get("started_at")
         try:
-            started = datetime.fromisoformat(sync["started_at"])
-        except ValueError:
+            anchor = datetime.fromisoformat(anchor_raw)
+        except (TypeError, ValueError):
             return True
-        if utc_now() - started < timedelta(hours=backoff_hours):
+        if utc_now() - anchor < timedelta(hours=backoff_hours):
             return False
     if not sync or not sync.get("success") or not sync.get("completed_at"):
         return True

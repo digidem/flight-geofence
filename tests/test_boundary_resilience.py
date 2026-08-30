@@ -65,14 +65,28 @@ def test_sync_due_respects_backoff(monkeypatch):
             },
         )
 
-    # Two failures, backoff window (2 -> 6h) still open.
+    # Two failures, backoff window (2 -> 6h) still open. Anchor is
+    # completed_at when present: 30-minute-old failure (with completed_at
+    # 10 minutes after start) is inside the 6h window.
     monkeypatch.setattr(main_module, "consecutive_sync_failures", lambda: 2)
-    set_latest((now - timedelta(minutes=30)).isoformat())
+    set_latest(
+        (now - timedelta(minutes=30)).isoformat(),
+        completed=(now - timedelta(minutes=20)).isoformat(),
+    )
     assert main_module._sync_due() is False
 
-    # Same failures, 6h backoff window elapsed.
-    set_latest((now - timedelta(hours=7)).isoformat())
+    # Same failures, 6h backoff window elapsed (completed 7h ago).
+    set_latest(
+        (now - timedelta(hours=7, minutes=10)).isoformat(),
+        completed=(now - timedelta(hours=7)).isoformat(),
+    )
     assert main_module._sync_due() is True
+
+    # Row killed before completion: falls back to started_at anchor.
+    set_latest((now - timedelta(hours=7)).isoformat(), completed=None)
+    assert main_module._sync_due() is True
+    set_latest((now - timedelta(minutes=30)).isoformat(), completed=None)
+    assert main_module._sync_due() is False
 
     # No failures: interval logic applies as before.
     monkeypatch.setattr(main_module, "consecutive_sync_failures", lambda: 0)
