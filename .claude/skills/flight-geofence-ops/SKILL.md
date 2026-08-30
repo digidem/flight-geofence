@@ -174,4 +174,22 @@ way to confirm it actually did.
 so sourcing it pipes the token into the shell as a command and prints half the
 secret in the error. Read values with `grep`/`cut`, or let compose substitute.
 
+## Local dev-server hygiene + prod sampling gotchas (2026-08-30)
+
+- Parallel lanes leave uvicorn processes on :8081. Before starting a dev
+  server, `pkill -f "uvicorn.*8081"`; prefer a named long-running process
+  (hub `start`) over background shells so restarts/stop are deterministic.
+  `make dev` from a lane needs the env scrub pinned
+  (`DATABASE_PATH=data/runtime/flight_alerts.db DOWNLOAD_DIR=data/downloads`).
+
+- `docker stats --format` expands `\t`, but `docker inspect --format` does
+  NOT (Go template, no escape processing) — inspect fields need a literal
+  separator. `scripts/rss_watch.sh` encodes this.
+
+- Read-only prod sampling pattern (RSS watch): `docker stats --no-stream`,
+  `docker inspect`, and `docker exec … python -` with
+  `sqlite3.connect("file:/data/runtime/flight_alerts.db?mode=ro", uri=True)`.
+  Run it from a checkout via ssh — the script ships in-repo but does not need
+  to be in the image.
+
 Related: [[flight-geofence-mission]], [[flight-geofence-diagnostics]]

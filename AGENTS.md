@@ -43,6 +43,8 @@ docker build --pull -t flight-geofence-alerts:local .
 - After any user-visible FR24 change (budget policy, manual Tracks flow, enrichment retries, legacy-provider warning, retention windows, CAS), sweep all four doc surfaces together in one commit: `README.md` + `docs/SPEC.md` + `.env.example` + `FLIGHTRADAR_API.md`.
 - Access SQLite through `app/database.py`. Schema changes must be additive and compatible with existing persistent volumes.
 - Add configurable UI settings through `SETTING_DEFS`; environment values must continue to override and lock interface values.
+- Frontend stays dependency-free: optional dev-dep guard checks (axe, lighthouse) must use `npx --no-install` — `npx --yes` auto-installs packages without approval.
+- New DOM-touching JS helpers must stay compatible with the node `vm` test harness: guard `typeof document`/`getElementById`/`document.body` before use, and keep the `window.confirm` gate in the `#event-track-panel` handler — `tests/test_fr24_track_panel_vm.mjs` drives it with a minimal document stub.
 - Keep official boundary downloads out of the repository. Preserve weekly FUNAI/CNUC discovery, validation, safe extraction, and rollback behavior.
 - Keep frontend changes dependency-free unless a new production dependency is explicitly approved.
 - Render timestamps with `Intl.DateTimeFormat` and the `timezone` setting's IANA name; never hand-roll offset math. Adding the browser's `getTimezoneOffset()` to the selected zone double-counts on non-UTC clients, and headless/test browsers usually run UTC, hiding the bug (shipped as v0.5.4 fix).
@@ -93,6 +95,7 @@ Before finishing:
 1. Run the smallest relevant test while iterating, then `make check`.
 2. Run the JavaScript syntax check after frontend changes.
 3. `uv run ruff check app tests` has a large pre-existing baseline (48 with all lanes' test files; 46 at `3d6b9fe`). To prove zero net-new prefer a worktree so concurrent lanes/operator WIP don't collide: `git worktree add /tmp/base HEAD --detach` and compare `uvx ruff check --output-format=concise app tests | grep -c ':'` on both trees (`git stash -u` collides with `intent-to-add` files). `make bump-version` touches `Dockerfile` `APP_VERSION` and busts the `uv` layer cache → next `docker compose up --build` is cold (~12 min); sweep `rm -f .coverage` before `git status`; leave the `healthy` container running (don't `compose down` at lane boundaries).
+3b. Concurrent lanes mutate the main checkout too: `git status --short` before starting, and if unfamiliar uncommitted edits appear mid-session (seen 2026-08-30: a parallel lane's half-applied changes corrupting `app/main.py` with duplicate function definitions), `git stash push -u -m "<label: ask owner>"` rather than reverting, verify `python -m compileall app` parses, then untangle only what the current task owns.
 4. Validate Compose and build the image after infra or dependency changes.
 5. Update `README.md`, `.env.example`, `docs/SPEC.md`, or `docs/RESEARCH.md` — and after any user-visible FR24 change also `FLIGHTRADAR_API.md` — when their documented behavior changes; sweep the four surfaces together in one commit.
 6. Report any check that could not run; do not claim live upstream or email validation without evidence.
