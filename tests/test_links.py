@@ -83,6 +83,12 @@ class TestAircraftHexLinks:
         assert links[-1].label == "FlightAware"
         assert links[-1].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
 
+    def test_dehyphenated_invalid_registration_falls_back(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", "adsb_lol", self.STALE, "-A")
+        assert links[0].label == "ADSB.lol"
+        assert links[-1].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
+
     def test_airplanes_live_events_lead_with_own_globe(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("e49abc", "airplanes_live", self.STALE)

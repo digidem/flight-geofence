@@ -728,7 +728,9 @@ function aircraftHexLinks(hex, provider, occurredAt, registration) {
   // registration page (full flight history) always resolves, so when the
   // event knows the registration it leads unconditionally.
   const reg = (registration || "").trim();
-  const regValid = reg.length >= 2 && /^[A-Z0-9-]+$/.test(reg.toUpperCase()) && /[A-Z]/.test(reg.toUpperCase());
+  // Mirror Python's _is_valid_registration: validate the dehyphenated form.
+  const regNorm = reg.toUpperCase().replace(/-/g, "");
+  const regValid = regNorm.length >= 2 && /^[A-Z0-9]+$/.test(regNorm) && /[A-Z]/.test(regNorm);
   const flightawareModes = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
   if (regValid) {
     const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/flight/${reg.toUpperCase()}` };

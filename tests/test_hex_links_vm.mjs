@@ -150,6 +150,10 @@ check(
   "empty registration falls back to freshness ordering",
   labels(linksOf("e49abc", "adsb_lol", hoursAgo(25), ""))[0] === LOL,
 );
+check(
+  "dehyphenated-invalid registration falls back (parity with Python)",
+  labels(linksOf("e49abc", "adsb_lol", hoursAgo(25), "-A"))[0] === LOL,
+);
 
 
 // --- fresh events lead with FlightAware -----------------------------------
