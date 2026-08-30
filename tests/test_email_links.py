@@ -85,6 +85,19 @@ class TestEmailHtmlLinks:
         assert fa < html.index("globe.adsb.lol/?icao=e49abc")
         assert fa < html.index("globe.adsbexchange.com/?icao=e49abc")
 
+    def test_fresh_event_plain_text_lists_flightaware_hex_first(self):
+        from datetime import datetime, timedelta
+        fresh = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        plain = self._plain(_make_event(occurred_at=fresh))
+        fa = plain.index("flightaware.com/live/modes/e49abc")
+        assert fa < plain.index("globe.adsb.lol/?icao=e49abc")
+
+    def test_stale_fr24_event_email_lists_adsbexchange_first(self):
+        event = _make_event(provider="flightradar24")
+        html = self._html(event)
+        assert html.index("globe.adsbexchange.com/?icao=e49abc") < html.index("globe.adsb.lol/?icao=e49abc")
+        assert html.index("globe.adsb.lol/?icao=e49abc") < html.index("flightaware.com/live/modes/e49abc")
+
     def test_adsbexchange_hex_url(self):
         html = self._html()
         assert "globe.adsbexchange.com/?icao=e49abc" in html

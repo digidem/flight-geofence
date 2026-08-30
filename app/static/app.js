@@ -725,8 +725,15 @@ function aircraftHexLinks(hex, provider, occurredAt) {
   if (preferredIdx > 0) globes.unshift(...globes.splice(preferredIdx, 1));
   // FlightAware's hex page resolves only for aircraft flying now or very
   // recently; lead with it for fresh events, otherwise trail it.
-  const t = occurredAt ? Date.parse(occurredAt) : NaN;
-  const fresh = Number.isFinite(t) && Date.now() - t >= 0 && Date.now() - t <= FLIGHTAWARE_FRESH_MS;
+  let ts = NaN;
+  if (occurredAt) {
+    const s = String(occurredAt).trim();
+    // Python's builder treats timezone-less timestamps as UTC; mirror that
+    // so both builders agree regardless of the browser's local timezone.
+    const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/.test(s) ? s : `${s}Z`;
+    ts = Date.parse(normalized);
+  }
+  const fresh = Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts <= FLIGHTAWARE_FRESH_MS;
   const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
   return fresh ? [flightaware, ...globes] : [...globes, flightaware];
 }

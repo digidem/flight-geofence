@@ -47,6 +47,14 @@ class TestAircraftHexLinks:
             "ADS-B Exchange", "ADSB.lol", "Airplanes.live", "FlightAware",
         ]
 
+    def test_boundary_just_inside_window_is_fresh(self):
+        from datetime import datetime, timedelta
+
+        from app.links import aircraft_hex_links
+        edge = (datetime.now(UTC) - timedelta(hours=24, seconds=-1)).isoformat()
+        links = aircraft_hex_links("e49abc", "adsb_lol", edge)
+        assert links[0].label == "FlightAware"
+
     def test_airplanes_live_events_lead_with_own_globe(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("e49abc", "airplanes_live", self.STALE)
