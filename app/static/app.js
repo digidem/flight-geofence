@@ -707,6 +707,7 @@ function aircraftHexLinks(hex) {
   if (h.startsWith("~")) return [];
   if (!/^[0-9a-f]{6}$/.test(h)) return [];
   return [
+    { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` },
     { label: "ADSB.lol", url: `https://globe.adsb.lol/?icao=${h}` },
     { label: "ADS-B Exchange", url: `https://globe.adsbexchange.com/?icao=${h}` },
     { label: "Airplanes.live", url: `https://globe.airplanes.live/?icao=${h}` },

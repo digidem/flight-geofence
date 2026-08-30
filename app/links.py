@@ -165,9 +165,15 @@ def aircraft_hex_links(hex_code: str | None) -> list[InvestigationLink]:
         return []
     h = hex_clean.lower()
     return [
-        InvestigationLink("ADSB.lol", f"https://globe.adsb.lol/?icao={h}", "live_tracking", 1),
-        InvestigationLink("ADS-B Exchange", f"https://globe.adsbexchange.com/?icao={h}", "live_tracking", 2),
-        InvestigationLink("Airplanes.live", f"https://globe.airplanes.live/?icao={h}", "live_tracking", 3),
+        InvestigationLink(
+            "FlightAware",
+            f"https://www.flightaware.com/live/modes/{h}/redirect",
+            "live_tracking",
+            1,
+        ),
+        InvestigationLink("ADSB.lol", f"https://globe.adsb.lol/?icao={h}", "live_tracking", 2),
+        InvestigationLink("ADS-B Exchange", f"https://globe.adsbexchange.com/?icao={h}", "live_tracking", 3),
+        InvestigationLink("Airplanes.live", f"https://globe.airplanes.live/?icao={h}", "live_tracking", 4),
     ]
 
 

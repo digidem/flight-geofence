@@ -68,6 +68,10 @@ class TestEmailHtmlLinks:
         html = self._html()
         assert "globe.adsb.lol/?icao=e49abc" in html
 
+    def test_flightaware_hex_url(self):
+        html = self._html()
+        assert "flightaware.com/live/modes/e49abc/redirect" in html
+
     def test_adsbexchange_hex_url(self):
         html = self._html()
         assert "globe.adsbexchange.com/?icao=e49abc" in html

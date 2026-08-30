@@ -9,19 +9,22 @@ class TestAircraftHexLinks:
     def test_valid_hex_uppercase(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("E49ABC")
-        assert len(links) == 3
-        assert links[0].label == "ADSB.lol"
-        assert "icao=e49abc" in links[0].url
-        assert links[1].label == "ADS-B Exchange"
+        assert len(links) == 4
+        assert links[0].label == "FlightAware"
+        assert links[0].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
+        assert links[1].label == "ADSB.lol"
         assert "icao=e49abc" in links[1].url
-        assert links[2].label == "Airplanes.live"
+        assert links[2].label == "ADS-B Exchange"
         assert "icao=e49abc" in links[2].url
+        assert links[3].label == "Airplanes.live"
+        assert "icao=e49abc" in links[3].url
 
     def test_valid_hex_lowercase(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("e49abc")
-        assert len(links) == 3
-        assert links[0].url == "https://globe.adsb.lol/?icao=e49abc"
+        assert len(links) == 4
+        assert links[0].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
+        assert links[1].url == "https://globe.adsb.lol/?icao=e49abc"
 
     def test_tilde_prefix_returns_empty(self):
         from app.links import aircraft_hex_links
@@ -31,7 +34,7 @@ class TestAircraftHexLinks:
         from app.links import aircraft_hex_links
         # abc123 IS valid (6 hex chars)
         links = aircraft_hex_links("abc123")
-        assert len(links) == 3
+        assert len(links) == 4
 
     def test_invalid_hex_5_chars(self):
         from app.links import aircraft_hex_links
@@ -61,7 +64,7 @@ class TestAircraftHexLinks:
     def test_whitespace_trimmed(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("  e49abc  ")
-        assert len(links) == 3
+        assert len(links) == 4
 
     def test_all_links_are_live_tracking_kind(self):
         from app.links import aircraft_hex_links
