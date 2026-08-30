@@ -1,6 +1,6 @@
 # TODO
 
-Known pending items as of 2026-08-29. Not a backlog — just what's open.
+Known pending items as of 2026-08-30. Not a backlog — just what's open.
 
 ## Blocking real alerting
 
@@ -24,20 +24,36 @@ Known pending items as of 2026-08-29. Not a backlog — just what's open.
 
 ## Data hygiene
 
-- [ ] **Geometry leak in `poll_runs.error_message`.** Code fix merged in PR
-      #11 (both `_run_coverage_cycle_locked` write sites now pass through
-      `_scrub_log_message`). Remaining — deploy-then-scrub ordering matters:
-      1. Merge, release, and deploy the fixed image.
-      2. Backfill the 695 pre-fix production rows per
-         `README.md § Poll-run error scrub` (backup → dry-run → apply; the
-         script is idempotent, so re-running after any late raw write is safe).
-      3. Check this item off.
+- [x] **Geometry leak in `poll_runs.error_message`.** Done 2026-08-30, PR #11
+      (v0.8.2). Both `_run_coverage_cycle_locked` write sites pass through
+      `_scrub_log_message`; backfill executed on production — 1032/1032 leaky
+      rows scrubbed (higher than the 695 originally counted; the leak kept
+      growing), 0 remain of 9530, `PRAGMA integrity_check: ok`, 314 areas
+      intact. Note: the pre-scrub backup failed (docker compose exec phantom
+      "not running" — plain `docker exec` works); accepted because the scrub
+      only rewrites error text (URLs → `<url>`, 500-char cap) and the
+      coordinates live by design in `areas`/`provider_call_log`. Backfill is
+      idempotent — safe to re-run via `README.md § Poll-run error scrub`.
 
 ## Security follow-up
 
 - [ ] **Rotate the FR24 API key.** Half of it hit this session's terminal
       scrollback while diagnosing the `.env` sourcing trap (see below) —
       cheap to rotate, no reason not to.
+
+## Watch items
+
+- [ ] **Complete the 48-72h RSS observation window (issue #4).** Tooling
+      shipped (`scripts/rss_watch.sh`, PR #9) and a local synthetic leak-hunt
+      found no leak (docs/RESEARCH_RSS.md, PR #8). Run the sampler every ~6h,
+      then decide: flat → close #4; monotonic climb excluding sync spikes →
+      next suspects are SQLite/WAL page cache and the boundary-sync geometry
+      pass (coverage.py). Baseline: ~112 MiB / 850 MiB at 2026-08-30.
+- [ ] **Verify old REVIEW_NOTES coverage gaps still exist.** The deleted
+      `docs/REVIEW_NOTES.md` claimed zero test coverage on disappearance
+      events and email retry (Batch 9). pytest has since grown 353 → 412; if
+      those gaps are genuinely still open, add the tests — both are
+      safety-critical paths (external alert delivery + detection).
 
 ## Operational notes (not action items, just context)
 
@@ -57,6 +73,11 @@ Known pending items as of 2026-08-29. Not a backlog — just what's open.
 - The host's `docker-compose.yml` drifts from what's committed in
   `../edt-cloud` — real changes (image pin, `mem_limit`, key passthrough)
   have landed there without a matching commit before. Diff before pulling.
+- `docker compose exec` can fail with a phantom `service … is not running
+  container #1` right after a container recreate, while plain `docker exec
+  <container-name>` works — during the v0.8.2 backfill the compose form
+  failed three times and plain exec never did. Prefer plain docker exec with
+  the full container name for one-off ops commands.
 
 See also: `.claude/skills/flight-geofence-ops/SKILL.md`,
 `.claude/skills/flight-geofence-diagnostics/SKILL.md`.

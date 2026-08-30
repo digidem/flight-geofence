@@ -192,4 +192,11 @@ secret in the error. Read values with `grep`/`cut`, or let compose substitute.
   Run it from a checkout via ssh — the script ships in-repo but does not need
   to be in the image.
 
+- **Verify a backup exists before mutating prod data.** During the v0.8.2
+  poll_runs backfill the backup step failed silently (output swallowed by
+  `tail`) and the apply ran anyway — recovered only because the scrub was
+  low-value text and the coordinates live elsewhere by design. Sequence:
+  backup → `ls` the backup file (or read its size back) → dry-run → apply.
+  Never chain apply into the same command as the backup without checking.
+
 Related: [[flight-geofence-mission]], [[flight-geofence-diagnostics]]
