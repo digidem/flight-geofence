@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import re
+import shutil
 import stat
 import tempfile
 import time
@@ -782,6 +783,30 @@ def _sync_boundaries_locked() -> dict[str, Any]:
         )
     save_sync_run(run)
     return run
+
+
+def cleanup_orphaned_tmp(max_age_hours: int = 24) -> int:
+    """Delete tmp* dirs/files under download_dir older than max_age (SIGKILL leftovers). Returns removed count."""
+    cfg = env_settings()
+    root = Path(cfg.download_dir)
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    if not root.is_dir():
+        return 0
+    for entry in root.iterdir():
+        if not entry.name.startswith("tmp"):
+            continue
+        try:
+            if entry.stat().st_mtime > cutoff:
+                continue
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+            removed += 1
+        except OSError:
+            logger.warning("tmp cleanup skipped %s", entry, exc_info=True)
+    return removed
 
 
 async def sync_boundaries() -> dict[str, Any]:

@@ -992,6 +992,20 @@ def latest_sync() -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def consecutive_sync_failures() -> int:
+    """Count most-recent consecutive failed syncs (success resets to 0)."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT success FROM dataset_syncs ORDER BY started_at DESC LIMIT 50"
+        ).fetchall()
+    count = 0
+    for row in rows:
+        if int(row[0]) == 1:
+            break
+        count += 1
+    return count
+
+
 def save_poll_run(run: dict[str, Any]) -> None:
     _upsert_run("poll_runs", run)
 

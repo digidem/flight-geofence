@@ -341,6 +341,12 @@ NEIGHBOR_DISTANCE_KM=10
 > [!IMPORTANT]
 > Weekly checks do not imply that the upstream datasets themselves change weekly. The application checks regularly so that newer official releases are incorporated without manual intervention.
 
+If an automatic sync fails, retries back off exponentially — 1 hour, then 6 hours, then 24 hours —
+so a persistent failure cannot burn CPU in a tight loop. The **Sync official boundaries** button and
+`POST /api/boundaries/sync` always run immediately, overriding the backoff. Startup also removes
+orphaned temporary download folders older than 24 hours (left behind if the process was killed
+mid-sync).
+
 ## Flight providers
 
 | Provider | Cost model | Key required | Role in this PoC | Important caveat |

@@ -221,6 +221,9 @@ When multiple free providers are enabled:
   block detection.
 - Support consistent SQLite online backup.
 - Prevent manual CLI poll/sync from overlapping the server scheduler with cross-process file locks.
+- Back off automatic boundary sync exponentially after consecutive failures (1 h → 6 h → 24 h cap),
+  anchored at the failed run's completion; a manual sync overrides the backoff. On startup, remove
+  orphaned `tmp*` download entries older than 24 h left by a killed sync.
 
 ## Acceptance criteria
 
