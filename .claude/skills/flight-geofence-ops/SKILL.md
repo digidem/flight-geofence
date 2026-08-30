@@ -51,6 +51,14 @@ git worktree remove /tmp/base --force
    otherwise rides into the tag.
 4. `git push`, then `gh workflow run release.yml --ref main -f version=vX.Y.Z`.
    The `v` prefix is regex-validated; a bare `X.Y.Z` fails.
+5. Parallel lanes ship mid-session: before bumping, `git fetch origin main &&
+   git log HEAD..origin/main --oneline` and `gh release list --limit 1`. On
+   2026-08-30 local main was three commits behind and v0.8.2 was cut by
+   another lane while this lane's PR was still in review — merge main into
+   the branch, then bump to the NEXT free patch.
+6. `gh pr merge --merge` deletes the local branch and checks out main by
+   default; uncommitted WIP in the way either blocks the checkout or rides
+   along — stash or commit it before merging.
 
 Test-only or script-only commits after a bump need no re-release — they are not in
 the image.
