@@ -26,6 +26,7 @@ from .boundary_sync import cleanup_orphaned_tmp, sync_boundaries
 from .config import env_settings
 from .coverage import regenerate_query_regions
 from .database import (
+    _scrub_log_message,
     active_states,
     area_counts,
     areas_by_ids,
@@ -330,7 +331,16 @@ async def _run_coverage_cycle_locked() -> dict:
                 "aircraft_returned": len(observations),
                 "candidate_aircraft": candidate_count,
                 "events_created": events_created,
-                "error_message": "; ".join(errors)[:4000] if errors else None,
+                # Provider failure strings quote the failing URL, and these
+                # providers put the region centre/radius in the URL path --
+                # raw text would leak protected-area geometry into poll_runs.
+                # Same treatment as provider_call_log (0.6.1). Reusing
+                # _scrub_log_message as-is: it caps at 500 chars internally.
+                # Per-error lines shrink well below that once URLs become
+                # '<url>', but a joined failure across many regions can
+                # truncate the tail the old [:4000] cap preserved — accepted
+                # trade-off; per-error detail remains in provider_call_log.
+                "error_message": _scrub_log_message("; ".join(errors)),
             }
         )
     except Exception as exc:
@@ -338,7 +348,9 @@ async def _run_coverage_cycle_locked() -> dict:
         run.update(
             {
                 "completed_at": utc_now().isoformat(),
-                "error_message": str(exc)[:4000],
+                # Same geometry-leak class as the joined-errors site above:
+                # httpx exceptions quote the failing URL verbatim.
+                "error_message": _scrub_log_message(str(exc)),
             }
         )
     save_poll_run(run)
