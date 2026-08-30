@@ -921,6 +921,7 @@ async function loadStatus() {
   return withLoading(null, container, async () => {
     const status = await api("/api/status");
     $("#phase-badge").textContent = status.phase;
+    $("#version-badge").textContent = `v${status.version}`;
     $("#warnings").innerHTML = status.warnings
       .map((warning) => `<div class="warning">${escapeHtml(warning)}</div>`)
       .join("");

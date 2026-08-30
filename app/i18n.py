@@ -70,7 +70,7 @@ TRANSLATIONS = {
         "login_throttled": "Muitas tentativas — tente novamente em 15 minutos.",
         "login_retry_in": "Tente novamente em 15 minutos.",
         "logout_button": "Sair",
-        "dashboard_subtitle": "Monitoramento territorial · PoC com dados reais",
+        "dashboard_subtitle": "Monitoramento territorial",
         "dashboard_current_phase": "Fase atual",
         "dashboard_three_phase": "Fluxo de três fases",
         "shadow_desc": "APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.",
@@ -497,7 +497,7 @@ TRANSLATIONS = {
         "login_retry_in": "Try again in 15 minutes.",
         "logout_button": "Log out",
         # Dashboard
-        "dashboard_subtitle": "Territorial monitoring · real-data PoC",
+        "dashboard_subtitle": "Territorial monitoring",
         "dashboard_current_phase": "Current phase",
         "dashboard_three_phase": "Three-phase workflow",
         "shadow_desc": "Real APIs and official boundaries. Events are stored, but no external alert is sent.",

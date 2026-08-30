@@ -65,6 +65,12 @@ h1 {
   font-size: 0.72rem;
   font-weight: 800;
 }
+.badge.muted {
+  border-color: rgba(255, 255, 255, 0.25);
+  opacity: 0.75;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
 
 /* Tabs */
 .tabs {
