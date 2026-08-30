@@ -5,26 +5,75 @@
 # ICAO hex links
 # ---------------------------------------------------------------------------
 
+from datetime import UTC
+
+
 class TestAircraftHexLinks:
-    def test_valid_hex_uppercase(self):
+    STALE = "2026-07-24T15:34:00+00:00"
+
+    def test_stale_event_leads_with_provider_globe(self):
         from app.links import aircraft_hex_links
-        links = aircraft_hex_links("E49ABC")
-        assert len(links) == 4
-        assert links[0].label == "FlightAware"
+        links = aircraft_hex_links("E49ABC", "adsb_lol", self.STALE)
+        assert [link.label for link in links] == [
+            "ADSB.lol", "ADS-B Exchange", "Airplanes.live", "FlightAware",
+        ]
+        assert links[0].url == "https://globe.adsb.lol/?icao=e49abc"
+        assert links[3].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
+
+    def test_fresh_event_leads_with_flightaware(self):
+        from datetime import datetime, timedelta
+
+        from app.links import aircraft_hex_links
+        fresh = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        links = aircraft_hex_links("e49abc", "adsb_lol", fresh)
+        assert [link.label for link in links] == [
+            "FlightAware", "ADSB.lol", "ADS-B Exchange", "Airplanes.live",
+        ]
         assert links[0].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
-        assert links[1].label == "ADSB.lol"
-        assert "icao=e49abc" in links[1].url
-        assert links[2].label == "ADS-B Exchange"
-        assert "icao=e49abc" in links[2].url
-        assert links[3].label == "Airplanes.live"
-        assert "icao=e49abc" in links[3].url
+
+    def test_boundary_of_fresh_window_is_stale(self):
+        from datetime import datetime, timedelta
+
+        from app.links import aircraft_hex_links
+        edge = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+        links = aircraft_hex_links("e49abc", "adsb_lol", edge)
+        assert links[0].label == "ADSB.lol"
+        assert links[-1].label == "FlightAware"
+
+    def test_fr24_events_prefer_adsbexchange_globe(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", "flightradar24", self.STALE)
+        assert [link.label for link in links] == [
+            "ADS-B Exchange", "ADSB.lol", "Airplanes.live", "FlightAware",
+        ]
+
+    def test_airplanes_live_events_lead_with_own_globe(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", "airplanes_live", self.STALE)
+        assert links[0].label == "Airplanes.live"
+
+    def test_unknown_provider_defaults_to_adsb_lol_globe(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", None, self.STALE)
+        assert links[0].label == "ADSB.lol"
+
+    def test_future_or_unparseable_occurred_at_treated_as_stale(self):
+        from app.links import aircraft_hex_links
+        for bad in ("2099-01-01T00:00:00+00:00", "garbage", "", None):
+            links = aircraft_hex_links("e49abc", "adsb_lol", bad)
+            assert links[0].label == "ADSB.lol"
+            assert links[-1].label == "FlightAware"
+
+    def test_priorities_follow_final_order(self):
+        from app.links import aircraft_hex_links
+        links = aircraft_hex_links("e49abc", "flightradar24", self.STALE)
+        assert [link.priority for link in links] == [1, 2, 3, 4]
 
     def test_valid_hex_lowercase(self):
         from app.links import aircraft_hex_links
         links = aircraft_hex_links("e49abc")
         assert len(links) == 4
-        assert links[0].url == "https://www.flightaware.com/live/modes/e49abc/redirect"
-        assert links[1].url == "https://globe.adsb.lol/?icao=e49abc"
+        assert links[0].url == "https://globe.adsb.lol/?icao=e49abc"
 
     def test_tilde_prefix_returns_empty(self):
         from app.links import aircraft_hex_links

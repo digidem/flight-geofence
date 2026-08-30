@@ -5,6 +5,7 @@ plain text contain correct URLs and do not contain broken patterns.
 """
 
 import os
+from datetime import UTC
 
 # Ensure env before any app imports
 os.environ.setdefault("ADMIN_PASSWORD", "correct-horse-battery-staple")
@@ -71,6 +72,18 @@ class TestEmailHtmlLinks:
     def test_flightaware_hex_url(self):
         html = self._html()
         assert "flightaware.com/live/modes/e49abc/redirect" in html
+
+    def test_stale_event_email_lists_globe_before_flightaware_hex(self):
+        html = self._html()
+        assert html.index("globe.adsb.lol/?icao=e49abc") < html.index("flightaware.com/live/modes/e49abc")
+
+    def test_fresh_event_email_lists_flightaware_hex_first(self):
+        from datetime import datetime, timedelta
+        fresh = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        html = self._html(_make_event(occurred_at=fresh))
+        fa = html.index("flightaware.com/live/modes/e49abc")
+        assert fa < html.index("globe.adsb.lol/?icao=e49abc")
+        assert fa < html.index("globe.adsbexchange.com/?icao=e49abc")
 
     def test_adsbexchange_hex_url(self):
         html = self._html()

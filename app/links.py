@@ -9,12 +9,11 @@ JavaScript for dashboard rendering.  Keep both copies in sync when changing
 link logic.
 """
 
-from __future__ import annotations
-
 import math
 import re
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import quote, urlencode
 
@@ -154,8 +153,52 @@ def event_link(event_id: str) -> InvestigationLink | None:
     )
 
 
-def aircraft_hex_links(hex_code: str | None) -> list[InvestigationLink]:
-    """Tracking-service links for a validated ICAO 24-bit address."""
+# FlightAware's /live/modes/{hex}/redirect resolves to a flight page only
+# while FlightAware associates the hex with a current or very recent
+# flight; for a grounded aircraft without a flight today it answers
+# "Could not find airborne flight". The community globes instead resolve
+# identity (registration, type) for any hex their network has ever seen,
+# grounded or not. Default ordering therefore depends on availability:
+# FlightAware leads while the event is fresh, the globe of the provider
+# that observed the hex leads otherwise.
+FLIGHTAWARE_FRESH_HOURS = 24
+
+# Public globe per flight-data provider. FR24 has no public hex globe;
+# ADS-B Exchange has the broadest unfiltered community coverage.
+_PROVIDER_GLOBES = {
+    "adsb_lol": "ADSB.lol",
+    "adsbexchange": "ADS-B Exchange",
+    "airplanes_live": "Airplanes.live",
+    "flightradar24": "ADS-B Exchange",
+}
+
+
+def _event_is_fresh(occurred_at: str | None) -> bool:
+    """True when the event happened within FLIGHTAWARE_FRESH_HOURS of now."""
+    if not occurred_at:
+        return False
+    try:
+        occurred = datetime.fromisoformat(str(occurred_at))
+    except ValueError:
+        return False
+    if occurred.tzinfo is None:
+        occurred = occurred.replace(tzinfo=UTC)
+    age = datetime.now(UTC) - occurred
+    return timedelta(0) <= age <= timedelta(hours=FLIGHTAWARE_FRESH_HOURS)
+
+
+def aircraft_hex_links(
+    hex_code: str | None,
+    provider: str | None = None,
+    occurred_at: str | None = None,
+) -> list[InvestigationLink]:
+    """Tracking-service links for a validated ICAO 24-bit address.
+
+    Ordered by what will resolve: FlightAware (full flight history, but
+    only resolvable for aircraft flying now or very recently) first when
+    the event is fresh; the observing provider's globe first otherwise,
+    since that network is guaranteed to know the hex.
+    """
     if not hex_code:
         return []
     hex_clean = hex_code.strip()
@@ -164,16 +207,23 @@ def aircraft_hex_links(hex_code: str | None) -> list[InvestigationLink]:
     if not _is_valid_icao_hex(hex_clean):
         return []
     h = hex_clean.lower()
-    return [
-        InvestigationLink(
-            "FlightAware",
-            f"https://www.flightaware.com/live/modes/{h}/redirect",
-            "live_tracking",
-            1,
-        ),
+    globes = [
         InvestigationLink("ADSB.lol", f"https://globe.adsb.lol/?icao={h}", "live_tracking", 2),
         InvestigationLink("ADS-B Exchange", f"https://globe.adsbexchange.com/?icao={h}", "live_tracking", 3),
         InvestigationLink("Airplanes.live", f"https://globe.airplanes.live/?icao={h}", "live_tracking", 4),
+    ]
+    preferred = _PROVIDER_GLOBES.get(provider or "", "ADSB.lol")
+    globes.sort(key=lambda link: link.label != preferred)
+    flightaware = InvestigationLink(
+        "FlightAware",
+        f"https://www.flightaware.com/live/modes/{h}/redirect",
+        "live_tracking",
+        1,
+    )
+    ordered = [flightaware, *globes] if _event_is_fresh(occurred_at) else [*globes, flightaware]
+    return [
+        InvestigationLink(link.label, link.url, link.kind, position)
+        for position, link in enumerate(ordered, start=1)
     ]
 
 

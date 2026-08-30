@@ -701,17 +701,34 @@ function translateCategory(category) {
   return t(mapping[category] || category);
 }
 
-function aircraftHexLinks(hex) {
+const FLIGHTAWARE_FRESH_MS = 24 * 60 * 60 * 1000;
+
+function aircraftHexLinks(hex, provider, occurredAt) {
   if (!hex) return [];
   const h = hex.trim().toLowerCase();
   if (h.startsWith("~")) return [];
   if (!/^[0-9a-f]{6}$/.test(h)) return [];
-  return [
-    { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` },
+  const globes = [
     { label: "ADSB.lol", url: `https://globe.adsb.lol/?icao=${h}` },
     { label: "ADS-B Exchange", url: `https://globe.adsbexchange.com/?icao=${h}` },
     { label: "Airplanes.live", url: `https://globe.airplanes.live/?icao=${h}` },
   ];
+  // The observing provider's globe is guaranteed to know the hex; FR24 has
+  // no public globe, so fall back to ADS-B Exchange (broadest coverage).
+  const preferred = {
+    adsb_lol: "ADSB.lol",
+    adsbexchange: "ADS-B Exchange",
+    airplanes_live: "Airplanes.live",
+    flightradar24: "ADS-B Exchange",
+  }[provider || ""] || "ADSB.lol";
+  const preferredIdx = globes.findIndex((g) => g.label === preferred);
+  if (preferredIdx > 0) globes.unshift(...globes.splice(preferredIdx, 1));
+  // FlightAware's hex page resolves only for aircraft flying now or very
+  // recently; lead with it for fresh events, otherwise trail it.
+  const t = occurredAt ? Date.parse(occurredAt) : NaN;
+  const fresh = Number.isFinite(t) && Date.now() - t >= 0 && Date.now() - t <= FLIGHTAWARE_FRESH_MS;
+  const flightaware = { label: "FlightAware", url: `https://www.flightaware.com/live/modes/${h}/redirect` };
+  return fresh ? [flightaware, ...globes] : [...globes, flightaware];
 }
 
 function registrationLinks(registration) {
@@ -781,7 +798,7 @@ function providerLinks(providerId) {
 
 function eventRow(event) {
   const hex = event.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);
@@ -813,7 +830,7 @@ async function loadEventDetail(eventId) {
       container.innerHTML = `<p class="muted">Event not found.</p>`;
       return;
     }
-    const hexLinks = aircraftHexLinks(event.aircraft_hex);
+    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
     const regLinks = registrationLinks(event.registration);
     const csLinks = callsignLinks(event.callsign);
     const posLinks = positionLinks(event.latitude, event.longitude);
@@ -1039,7 +1056,7 @@ async function bulkFiltered(selected) {
 }
 
 function reviewCard(event) {
-  const hexLinks = aircraftHexLinks(event.aircraft_hex);
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at);
   const hexDisplay = hexLinks.length
     ? `<a href="${hexLinks[0].url}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(event.aircraft_hex.toUpperCase())}</a>`
     : escapeHtml(event.aircraft_hex.toUpperCase());
@@ -1179,7 +1196,7 @@ function logsDetailCell(row) {
 function logsAircraftCell(row) {
   if (row.kind !== "observation" || !row.aircraft_hex) return "—";
   const hex = row.aircraft_hex.toUpperCase();
-  const hexLinks = aircraftHexLinks(row.aircraft_hex);
+  const hexLinks = aircraftHexLinks(row.aircraft_hex, row.provider, row.at);
   const hexDisplay = hexLinks.length
     ? `<a href="${escapeHtml(hexLinks[0].url)}" target="_blank" rel="noopener noreferrer" class="log-aircraft-link">${escapeHtml(hex)}</a>`
     : escapeHtml(hex);

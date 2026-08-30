@@ -102,7 +102,7 @@ def _plain(event: dict) -> str:
 
     # Build links via centralized builder
     evt_link = event_link(event.get("id", ""))
-    hex_links = aircraft_hex_links(event.get("aircraft_hex"))
+    hex_links = aircraft_hex_links(event.get("aircraft_hex"), event.get("provider"), event.get("occurred_at"))
     cs_links = callsign_links(event.get("callsign"))
     fn_links = flight_number_links(event.get("flight_number"))
     reg_links = registration_links(event.get("registration"))
@@ -230,7 +230,7 @@ def _html(event: dict) -> str:
 
     # Build links via centralized builder
     evt_link = event_link(event.get("id", ""))
-    hex_links = aircraft_hex_links(event.get("aircraft_hex"))
+    hex_links = aircraft_hex_links(event.get("aircraft_hex"), event.get("provider"), event.get("occurred_at"))
     cs_links = callsign_links(event.get("callsign"))
     fn_links = flight_number_links(event.get("flight_number"))
     reg_links = registration_links(event.get("registration"))
