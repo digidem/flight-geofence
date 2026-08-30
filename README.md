@@ -642,6 +642,16 @@ Choose a destination:
 
 Back up before upgrading. Do not change `APP_SECRET_KEY` between deployments unless you are intentionally discarding encrypted UI configuration.
 
+### Memory watch
+
+`./scripts/rss_watch.sh` takes a read-only RSS sample of the running prod
+container (docker stats/inspect plus a read-only SQLite query for the last
+boundary sync) and appends one line to a local, gitignored CSV. During the
+issue #4 observation window, sample every ~6 hours for 48-72 hours: flat or
+sawtooth usage means no leak (close #4); a monotonic climb excluding
+sync-driven spikes confirms a leak. See the script header for the column
+layout and the `--csv` override.
+
 ### Health endpoints
 
 - `/healthz` confirms that the HTTP process is alive.
@@ -685,6 +695,7 @@ For security findings, avoid opening a public issue containing credentials, exac
 │   └── static/              # private table-first frontend
 ├── scripts/
 │   ├── backup.sh            # consistent SQLite backup
+│   ├── rss_watch.sh         # read-only RSS sampler for issue #4
 │   └── check_external_links.py  # optional manual link checker
 ├── tests/                   # unit and integration tests
 ├── .github/workflows/ci.yml # compile, test, frontend, Compose, image build

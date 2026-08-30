@@ -16,3 +16,6 @@ data/
 sandbox-artifacts/
 local/
 local/ux-review-baseline/
+
+rss-samples.csv
+*.log
