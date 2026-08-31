@@ -45,8 +45,11 @@ TI_RAPOSA_HALF_DEG = 0.02  # ~4 km half-side -> ~4 km square in lat/lon
 # monitoring scenario — multiple protected areas, multiple events.
 PN_SerraDoDivisor_ID = "pn-serra-do-divisor-qa"
 PN_SerraDoDivisor_NAME = "Parque Nacional da Serra do Divisor"
-PN_SerraDoDivisor_CENTER_LON = -73.4770
-PN_SerraDoDivisor_CENTER_LAT = -8.3500
+# Keep both seed clusters in the same hemisphere so the Monitoramento
+PN_SerraDoDivisor_CENTER_LON = -60.0000
+# clusters) keeps the polygons at a usable scale instead of squashing
+# them into 1-pixel specks.
+PN_SerraDoDivisor_CENTER_LAT = 3.4500
 PN_SerraDoDivisor_HALF_DEG = 0.015
 
 
