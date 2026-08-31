@@ -952,6 +952,12 @@ function handleHashRoute() {
   }
 }
 async function loadStatus() {
+  // Lightweight global status loader (issue #14): keeps phase / version /
+  // warnings / metrics, drops the embedded /api/events fetch and the
+  // #dashboard-events table rendering. Existing callers at app.js:1058,
+  // 1071, 1147, 1330, 1486, 1512, 1535 use this for global-status refresh
+  // only; they continue to work unchanged. Returns the status payload so
+  // the Monitoramento orchestrator can compose without a second round-trip.
   const container = $("#dashboard-events");
   return withLoading(null, container, async () => {
     const status = await api("/api/status");
@@ -966,11 +972,201 @@ async function loadStatus() {
       metric(t("metric_events"), status.events.total, `${status.events.review.useful || 0} ${t("metric_reviewed")}`),
       metric(t("metric_last_poll"), status.latest_poll?.success ? t("metric_healthy") : t("metric_not_ready"), status.latest_poll?.completed_at ? formatTime(status.latest_poll.completed_at) : t("metric_no_poll")),
     ].join("");
-    const recent = await api("/api/events?limit=20");
-    $("#dashboard-events").innerHTML = recent.events.length
-      ? recent.events.map(eventRow).join("")
-      : `<tr><td colspan="7" class="muted">${t("no_events")}</td></tr>`;
+    return status;
   });
+}
+
+// ---- Monitoramento (issue #14) -------------------------------------------
+// Orchestrator + renderers for the redesigned dashboard surface.
+// `loadMonitoramento()` composes loadStatus() with the events, FR24 status,
+// and FR24 clusters endpoints. `openEvents(filter)` is the tiny cross-section
+// helper used by the attention card and "Ver todos em Eventos".
+
+async function loadMonitoramento() {
+  const container = $("#view-dashboard");
+  return withLoading(null, container, async () => {
+    const [status, eventsPayload, fr24Status, fr24Clusters] = await Promise.all([
+      loadStatus(),
+      api("/api/events?limit=100").catch(() => ({ events: [] })),
+      api("/api/fr24/status").catch(() => ({})),
+      api("/api/fr24/clusters").catch(() => ({ clusters: [] })),
+    ]);
+    renderMonitoramentoMap(eventsPayload.events || [], fr24Clusters.clusters || [], fr24Status);
+    renderMonitoramentoRecent(eventsPayload.events || []);
+    renderMonitoramentoAttention(status);
+    renderMonitoramentoFr24(fr24Status);
+  });
+}
+
+function openEvents(filter = "") {
+  // Set the filter BEFORE the synthetic .click() so by the time the existing
+  // tab-activation handler at app.js:1573 reads #review-filter.value inside
+  // loadReviews(), the filter is already in place. The handler invokes
+  // loadReviews() itself; we do not call it again.
+  const select = $("#review-filter");
+  if (select) select.value = filter;
+  appState.reviewsOffset = 0;
+  const tab = $("#tab-events");
+  if (tab) tab.click();
+}
+
+function renderMonitoramentoMap(events, clusters, _fr24Status) {
+  const map = $("#monitoramento-map");
+  const empty = $("#monitoramento-map-empty");
+  if (!map) return;
+  const recent = (events || []).filter(
+    (e) => Number.isFinite(e.latitude) && Number.isFinite(e.longitude),
+  );
+  if (!clusters.length && !recent.length) {
+    map.innerHTML = "";
+    if (empty) {
+      empty.hidden = false;
+      empty.textContent = t("monitoramento_empty");
+    }
+    return;
+  }
+  if (empty) empty.hidden = true;
+  const bbox = monitoramentoUnionBbox(clusters, recent);
+  const { west, east, south, north } = bbox;
+  const lonSpan = east - west || 0.0001;
+  const latSpan = north - south || 0.0001;
+  const width = 520;
+  const kx = Math.cos(((north + south) / 2) * (Math.PI / 180)) || 1;
+  const height = Math.max(140, Math.min(360, Math.round(width * (latSpan / (lonSpan * kx)))));
+  const pad = 8;
+  const px = (lon) => pad + ((lon - west) / lonSpan) * (width - 2 * pad);
+  const py = (lat) => pad + ((north - lat) / latSpan) * (height - 2 * pad);
+  const ringPath = (ring) =>
+    ring.map(([lon, lat], i) => `${i ? "L" : "M"}${px(lon).toFixed(2)} ${py(lat).toFixed(2)}`).join("") + "Z";
+  const polys = (clusters || []).flatMap((cluster) => {
+    const fc = cluster.coverage_geojson;
+    if (!fc || !Array.isArray(fc.features)) return [];
+    return fc.features
+      .filter((f) => f.properties && f.properties.role === "area")
+      .map((f) => {
+        const path = f.geometry?.type === "Polygon"
+          ? f.geometry.coordinates.map(ringPath).join("")
+          : f.geometry?.type === "MultiPolygon"
+            ? f.geometry.coordinates.map((poly) => poly.map(ringPath).join("")).join("")
+            : "";
+        if (!path) return "";
+        return `<path class="minimap-area" d="${path}"><title>${escapeHtml(f.properties.name || "")}</title></path>`;
+      });
+  });
+  const boundsRects = (clusters || []).map((cluster) => {
+    const b = fr24ClusterNumericBounds(cluster);
+    if (!b) return "";
+    const x = px(b.west).toFixed(2);
+    const y = py(b.north).toFixed(2);
+    const w = (px(b.east) - px(b.west)).toFixed(2);
+    const h = (py(b.south) - py(b.north)).toFixed(2);
+    return `<rect class="minimap-bounds" x="${x}" y="${y}" width="${w}" height="${h}"><title>${escapeHtml(cluster.name || "")}</title></rect>`;
+  });
+  const statusLabels = {
+    unreviewed: t("monitoramento_event_unreviewed"),
+    useful: t("monitoramento_event_useful"),
+    uncertain: t("monitoramento_event_uncertain"),
+    noise: t("monitoramento_event_noise"),
+  };
+  const dots = recent.map((event) => {
+    const cx = px(event.longitude).toFixed(2);
+    const cy = py(event.latitude).toFixed(2);
+    const label = statusLabels[event.review_status] || event.review_status || "";
+    const title = `${formatTime(event.occurred_at)} · ${label}`;
+    return `<a href="#/events/${encodeURIComponent(event.id)}" class="event-dot event-dot-${escapeHtml(event.review_status || "unreviewed")}" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><circle cx="${cx}" cy="${cy}" r="4"/></a>`;
+  }).join("");
+  map.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("monitoramento_map_aria"))}"><g class="monitoramento-areas">${polys.join("")}</g><g class="monitoramento-bounds">${boundsRects.join("")}</g><g class="monitoramento-events">${dots}</g></svg>`;
+}
+
+function monitoramentoUnionBbox(clusters, events) {
+  let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
+  for (const cluster of clusters || []) {
+    const b = fr24ClusterNumericBounds(cluster);
+    if (!b) continue;
+    if (b.west < west) west = b.west;
+    if (b.east > east) east = b.east;
+    if (b.south < south) south = b.south;
+    if (b.north > north) north = b.north;
+  }
+  for (const event of events || []) {
+    if (!Number.isFinite(event.latitude) || !Number.isFinite(event.longitude)) continue;
+    if (event.longitude < west) west = event.longitude;
+    if (event.longitude > east) east = event.longitude;
+    if (event.latitude < south) south = event.latitude;
+    if (event.latitude > north) north = event.latitude;
+  }
+  if (!Number.isFinite(west)) {
+    return { west: -75, east: -34, south: -35, north: 6 };
+  }
+  const lonPad = (east - west) * 0.05 || 0.5;
+  const latPad = (north - south) * 0.05 || 0.5;
+  return {
+    west: west - lonPad,
+    east: east + lonPad,
+    south: south - latPad,
+    north: north + latPad,
+  };
+}
+
+function renderMonitoramentoRecent(events) {
+  const tbody = $("#monitoramento-recent-events");
+  if (!tbody) return;
+  const top5 = (events || []).slice(0, 5);
+  tbody.innerHTML = top5.length
+    ? top5.map(eventRow).join("")
+    : `<tr><td colspan="7" class="muted">${escapeHtml(t("monitoramento_recent_empty"))}</td></tr>`;
+}
+
+function renderMonitoramentoAttention(status) {
+  const countEl = $("#monitoramento-attention-count");
+  const count = status?.events?.review?.unreviewed ?? 0;
+  if (countEl) countEl.textContent = String(count);
+  const trigger = $("#monitoramento-attention-btn");
+  if (trigger) trigger.onclick = () => openEvents("unreviewed");
+}
+
+function renderMonitoramentoFr24(fr24Status) {
+  const tiles = $("#monitoramento-fr24-tiles");
+  const blockers = $("#monitoramento-fr24-blockers");
+  if (!tiles || !blockers) return;
+  // /api/fr24/status returns credits_used_this_cycle, operating_budget,
+  // budget_state, projected_end_of_cycle_credits, blockers, enabled.
+  // See app/main.py:924 fr24_status().
+  const used = fr24Status?.credits_used_this_cycle ?? 0;
+  const budget = fr24Status?.operating_budget ?? 0;
+  const pct = budget > 0 ? Math.round((used / budget) * 100) : 0;
+  const rawState = fr24Status?.budget_state;
+  const stateKey = rawState
+    ? `fr24_budget_state_${String(rawState).toLowerCase()}`
+    : "fr24_budget_state_active";
+  const stateLabel = t(stateKey) !== stateKey ? t(stateKey) : (rawState || "—");
+  const projected = fr24Status?.projected_end_of_cycle_credits;
+  const projectedNote = projected === null || projected === undefined
+    ? (fr24Status?.billing_cycle_id || "")
+    : `${fr24Status?.billing_cycle_id || ""} · proj. ${Math.round(projected)}`;
+  tiles.innerHTML = [
+    metric(t("monitoramento_fr24_credits"), String(used), `${pct}% ${t("monitoramento_fr24_of_budget")}`),
+    metric(t("monitoramento_fr24_state"), stateLabel, projectedNote),
+  ].join("");
+  // Blockers list — the four known codes (flag_disabled, missing_api_key,
+  // no_enabled_clusters, budget_exhausted_paused) all have i18n keys at
+  // app/i18n.py:336-339. translateFr24Blocker handles both the known set
+  // and any future unknown code by falling back to the raw string.
+  const codes = fr24Status?.blockers || [];
+  blockers.innerHTML = codes.length
+    ? `<ul>${codes.map((c) => `<li>${escapeHtml(translateFr24Blocker(c))}</li>`).join("")}</ul>`
+    : "";
+}
+
+// Blocker translator — same keys as the FR24 admin surface at app.js:579
+// (fr24_blocker_flag_disabled / missing_api_key / no_enabled_clusters /
+// budget_exhausted_paused). Falls back to the raw code for unknown values.
+function translateFr24Blocker(code) {
+  if (!code) return "";
+  const key = `fr24_blocker_${String(code).toLowerCase()}`;
+  const translated = t(key);
+  if (translated !== key) return translated;
+  return String(code);
 }
 
 function areaFeedback(message) {
@@ -1509,7 +1705,9 @@ async function init() {
   showApp();
   // Settings first: formatTime in loadStatus needs appState.timezone set.
   await loadSettings();
-  await loadStatus();
+  // loadMonitoramento() composes loadStatus() as its status building
+  // block, so a second loadStatus() here would be redundant.
+  await loadMonitoramento();
   handleHashRoute();
   try { fr24WizardInit(); } catch {}
   try { initSettingsStepper(); } catch {}
@@ -1555,7 +1753,8 @@ $("#lang-toggle").addEventListener("click", async () => {
   const activeTab = $(".tab.active");
   if (activeTab) {
     const view = activeTab.dataset.view;
-    if (view === "dashboard") await loadStatus();
+    if (view === "dashboard") await loadMonitoramento();
+
     if (view === "areas") await loadAreas();
     if (view === "events") await loadReviews();
     if (view === "settings") await loadSettings();
@@ -1598,6 +1797,7 @@ $$(".tab").forEach((tab) => {
     const c = containerMap[tab.dataset.view];
     if (c) try { c.setAttribute("aria-busy", "true"); } catch {}
     try {
+      if (tab.dataset.view === "dashboard") await loadMonitoramento();
       if (tab.dataset.view === "areas") await loadAreas();
       if (tab.dataset.view === "events") await loadReviews();
       if (tab.dataset.view === "settings") await loadSettings();
@@ -1627,11 +1827,22 @@ $$(".tab").forEach((tab) => {
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
 $("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
 $("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
-$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#dashboard-events"), loadStatus));
+$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#view-dashboard"), loadMonitoramento));
 $("#area-filter").addEventListener("click", (event) => {
   appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
   appState.areasOffset = 0;
   withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+});
+// Ver todos em Eventos button on Monitoramento (issue #14).
+$("#monitoramento-view-all-events")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openEvents("");
+});
+// it still exists (issue #18 will rewire to openSettingsSection("fr24")).
+$("#monitoramento-fr24-details")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  const tab = $("#tab-fr24");
+  if (tab) tab.click();
 });
 const debouncedAreaSearch = debounce(() => {
   try {

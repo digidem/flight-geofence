@@ -48,31 +48,52 @@
       <div id="spec-banner" role="note" class="spec-banner" data-i18n="spec_disclaimer_banner">Sinais não verificados — não constituem prova de pouso, desligamento deliberado, garimpo ilegal ou irregularidade.</div>
       <section id="view-dashboard" class="view active" role="tabpanel" aria-labelledby="tab-dashboard" tabindex="0">
         <div id="warnings"></div>
-        <div id="metrics" class="metric-grid"></div>
-        <div class="grid two">
-          <article class="panel">
-            <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_current_phase">Fase atual</p><h2 data-i18n="dashboard_three_phase">Fluxo de três fases</h2></div></div>
-            <div class="phase-grid">
-              <div class="phase-card"><strong>1 · <span data-i18n="phase_shadow">Sombra</span></strong><p data-i18n="shadow_desc">APIs oficiais e limites oficiais. Eventos são armazenados, mas nenhum alerta externo é enviado.</p></div>
-              <div class="phase-card"><strong>2 · <span data-i18n="phase_review">Revisão</span></strong><p data-i18n="review_desc">Classifique eventos como úteis, ruído ou incerto e ajuste limiares e áreas selecionadas.</p></div>
-              <div class="phase-card"><strong>3 · <span data-i18n="phase_live">Ao vivo</span></strong><p data-i18n="live_desc">Apenas eventos de parada provável e desaparecimento acionam a entrega de e-mail configurada.</p></div>
-            </div>
-          </article>
-          <article class="panel">
-            <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_actions">Ações</p><h2 data-i18n="dashboard_operations">Operações</h2></div></div>
-            <div class="actions">
-              <button id="sync-now" class="button secondary" data-i18n="sync_boundaries">Sincronizar limites oficiais</button>
-              <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
-              <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
-              <button id="refresh" class="button ghost dark" data-i18n="refresh_status">Atualizar status</button>
-              <div id="action-result" class="muted" role="status" aria-live="polite"></div>
-            </div>
-          </article>
+        <div class="monitoramento-shell">
+          <div id="metrics" class="metric-grid monitoramento-metrics"></div>
+          <div class="monitoramento-grid">
+            <article class="panel monitoramento-map-panel">
+              <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_title">Monitoramento</p></div></div>
+              <div id="monitoramento-map" class="monitoramento-map"></div>
+              <p id="monitoramento-map-empty" class="muted" hidden data-i18n="monitoramento_empty">Nenhum cluster configurado</p>
+            </article>
+            <aside class="monitoramento-side">
+              <article class="panel monitoramento-attention">
+                <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_attention">Atenção</p></div></div>
+                <button id="monitoramento-attention-btn" class="button ghost dark monitoramento-attention-btn" type="button">
+                  <strong id="monitoramento-attention-count">0</strong>
+                  <span class="muted" data-i18n="monitoramento_attention_detail">aguardando revisão</span>
+                </button>
+              </article>
+              <article class="panel monitoramento-recent-activity">
+                <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_recent_activity">Atividade recente</p></div></div>
+                <div class="table-wrap">
+                  <table class="table--detail">
+                    <caption class="sr-only" data-i18n="monitoramento_recent_activity">Atividade recente</caption>
+                    <thead><tr><th scope="col" data-i18n="col_time">Horário</th><th scope="col" data-i18n="col_signal">Sinal</th><th scope="col" data-i18n="col_aircraft">Aeronave</th><th scope="col" data-i18n="col_areas">Áreas</th><th scope="col" data-i18n="col_telemetry">Telemetria</th><th scope="col" data-i18n="col_phase">Fase</th><th scope="col" data-i18n="col_review">Revisão</th></tr></thead>
+                    <tbody id="monitoramento-recent-events"></tbody>
+                  </table>
+                </div>
+                <button id="monitoramento-view-all-events" class="button ghost dark" type="button" data-i18n="monitoramento_view_all_events">Ver todos em Eventos</button>
+              </article>
+              <article class="panel monitoramento-fr24-summary">
+                <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_fr24_summary">FR24</p></div></div>
+                <div id="monitoramento-fr24-tiles" class="metric-grid"></div>
+                <div id="monitoramento-fr24-blockers"></div>
+                <a id="monitoramento-fr24-details" class="button ghost dark" href="#tab-fr24" data-i18n="monitoramento_fr24_details_link">Detalhes em FR24</a>
+              </article>
+              <article class="panel">
+                <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_actions">Operações</p></div></div>
+                <div class="actions">
+                  <button id="sync-now" class="button secondary" data-i18n="sync_boundaries">Sincronizar limites oficiais</button>
+                  <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
+                  <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
+                  <button id="refresh" class="button ghost dark" data-i18n="monitoramento_refresh">Atualizar status</button>
+                  <div id="action-result" class="muted" role="status" aria-live="polite"></div>
+                </div>
+              </article>
+            </aside>
+          </div>
         </div>
-        <article class="panel">
-          <div class="panel-header"><div><p class="eyebrow" data-i18n="dashboard_recent">Sinais recentes</p><h2 data-i18n="dashboard_events">Eventos suspeitos</h2></div></div>
-          <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="dashboard_events">Eventos suspeitos</caption><thead><tr><th scope="col" data-i18n="col_time">Horário</th><th scope="col" data-i18n="col_signal">Sinal</th><th scope="col" data-i18n="col_aircraft">Aeronave</th><th scope="col" data-i18n="col_areas">Áreas</th><th scope="col" data-i18n="col_telemetry">Telemetria</th><th scope="col" data-i18n="col_phase">Fase</th><th scope="col" data-i18n="col_review">Revisão</th></tr></thead><tbody id="dashboard-events"></tbody></table></div>
-        </article>
       </section>
 
       <section id="view-areas" class="view" role="tabpanel" aria-labelledby="tab-areas" tabindex="0">

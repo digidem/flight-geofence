@@ -635,6 +635,46 @@ tr.log-row-failed td:first-child {
   font-weight: 600;
   padding: 6px 0;
 }
+.detail-back {
+  margin-top: 16px;
+}
+
+/* Monitoramento workspace (issue #14) — uses only existing tokens. */
+.monitoramento-shell { display: flex; flex-direction: column; gap: 16px; }
+.monitoramento-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1024px) {
+  .monitoramento-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.monitoramento-side { display: flex; flex-direction: column; gap: 16px; }
+.monitoramento-map {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 280px;
+  padding: 12px;
+}
+.monitoramento-map svg { width: 100%; height: auto; display: block; }
+.monitoramento-attention-btn { width: 100%; text-align: left; padding: 12px 16px; }
+.monitoramento-attention-btn strong {
+  display: inline-block;
+  min-width: 2ch;
+  margin-right: 8px;
+  font-size: 1.2em;
+}
+.monitoramento-fr24-blockers ul { margin: 8px 0 0 16px; padding: 0; }
+.monitoramento-fr24-blockers li { font-size: 0.85rem; color: var(--amber); }
+.event-dot circle { stroke: var(--paper); stroke-width: 1; }
+.event-dot-unreviewed circle { fill: var(--burgundy); }
+.event-dot-useful circle { fill: var(--forest); }
+.event-dot-uncertain circle { fill: var(--amber); }
+.event-dot-noise circle { fill: var(--muted); }
 .detail-grid dd {
   margin: 0;
   padding: 6px 0;

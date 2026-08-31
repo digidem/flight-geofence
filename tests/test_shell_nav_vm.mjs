@@ -40,7 +40,7 @@ function extractNavLabels(sourceText) {
   if (ptStart === -1 || enStart === -1) {
     throw new Error("Could not locate pt/en blocks in app/i18n.py");
   }
-  const kvRegex = /"([a-z_]+)":\s*"([^"\\]*(?:\\.[^"\\]*)*)"(?:,|\s*\n)/g;
+  const kvRegex = /"([a-z_0-9]+)":\s*"([^"\\]*(?:\\.[^"\\]*)*)"(?:,|\s*\n)/g;
   for (const m of sourceText.slice(ptStart, enStart).matchAll(kvRegex)) {
     result.pt[m[1]] = m[2];
   }
