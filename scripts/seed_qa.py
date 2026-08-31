@@ -4,8 +4,10 @@ Eventos review queue + investigation drawer (#15) can be exercised by
 hand.
 
 Usage:
-    env DATABASE_PATH=data/runtime/flight_alerts.db \
-        uv run python scripts/seed_qa.py [--reset]
+    env DATABASE_PATH=data/runtime/flight_alerts.db \\
+
+# A small square near Boa Vista/RR. Real-world area name so the operator
+# can recognise the seed data.
 
 The script is idempotent: --reset wipes events/areas first; without --reset
 it keeps existing rows and only adds the QA fixtures if the event id is
@@ -306,6 +308,123 @@ def ensure_events(conn: sqlite3.Connection, area_ids: list[str], reset: bool) ->
     return inserted
 
 
+
+
+def ensure_clusters(conn: sqlite3.Connection, area_ids: list[str], reset: bool) -> list[str]:
+    conn.row_factory = sqlite3.Row
+    """Seed two enabled FR24 clusters (one per area) so the Monitoramento
+    minimap renders polygons and the seed event dots land inside the cluster
+    bounds. The cluster bounds are computed via the same
+    compute_cluster_bounds() helper the production cluster-create path uses,
+    so a subsequent cluster-edit saves consistent geometry.
+
+    The minimap renders polygons from fr24_clusters.coverage_geojson, which
+    is computed at GET time from the member areas' geometry_json + the
+    cluster bounds. We only need to populate fr24_clusters + fr24_cluster_areas;
+    the runtime GET computes the coverage_geojson itself.
+    """
+    from app.fr24_clusters import compute_cluster_bounds
+
+    if reset:
+        conn.execute("DELETE FROM fr24_cluster_areas")
+        conn.execute("DELETE FROM fr24_clusters")
+        print("  --reset: cleared fr24_cluster_areas + fr24_clusters tables")
+
+    # One cluster per area. Categories chosen to match what the qa-seed
+    # provider is allowed to report.
+    plans = [
+        {
+            "id": "qa-cluster-raposa",
+            "name": "QA · TI Raposa Serra do Sol",
+            "buffer_km": 5.0,
+            "categories": ["light", "scheduled"],
+            "min_alt": 0, "max_alt": 45000,
+            "area_id": area_ids[0],
+        },
+        {
+            "id": "qa-cluster-divisor",
+            "name": "QA · PN Serra do Divisor",
+            "buffer_km": 5.0,
+            "categories": ["light", "scheduled"],
+            "min_alt": 0, "max_alt": 45000,
+            "area_id": area_ids[1],
+        },
+    ]
+
+    now = _now_iso()
+    inserted: list[str] = []
+    for plan in plans:
+        # Compute calc bounds using the same helper the cluster-save path
+        # uses, so the cluster's bounds are correct from the first GET.
+        area_row = conn.execute(
+            "SELECT geometry_json FROM areas WHERE id=?", (plan["area_id"],)
+        ).fetchone()
+        if not area_row or not area_row["geometry_json"]:
+            print(f"  cluster {plan['id']}: skipped (no area geometry)")
+            continue
+        bounds = compute_cluster_bounds([area_row["geometry_json"]], plan["buffer_km"])
+        existing = conn.execute(
+            "SELECT id FROM fr24_clusters WHERE id=?", (plan["id"],)
+        ).fetchone()
+        if existing and not reset:
+            continue
+
+        conn.execute(
+            """
+            INSERT INTO fr24_clusters(
+                id, name, enabled, buffer_km,
+                min_altitude_ft, max_altitude_ft,
+                categories_json,
+                calc_north, calc_south, calc_west, calc_east,
+                manual_north, manual_south, manual_west, manual_east,
+                use_manual_bounds,
+                created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,
+                enabled=excluded.enabled,
+                buffer_km=excluded.buffer_km,
+                min_altitude_ft=excluded.min_altitude_ft,
+                max_altitude_ft=excluded.max_altitude_ft,
+                categories_json=excluded.categories_json,
+                calc_north=excluded.calc_north,
+                calc_south=excluded.calc_south,
+                calc_west=excluded.calc_west,
+                calc_east=excluded.calc_east,
+                updated_at=excluded.updated_at
+            """,
+            (
+                plan["id"], plan["name"], 1, plan["buffer_km"],
+                plan["min_alt"], plan["max_alt"],
+                json.dumps(plan["categories"]),
+                bounds["north"], bounds["south"], bounds["west"], bounds["east"],
+                None, None, None, None,
+                0,
+                now, now,
+            ),
+        )
+        # Member-area row.
+        conn.execute(
+            """
+            INSERT INTO fr24_cluster_areas(cluster_id, area_id)
+            VALUES (?, ?)
+            ON CONFLICT(cluster_id, area_id) DO NOTHING
+            """,
+            (plan["id"], plan["area_id"]),
+        )
+        inserted.append(plan["id"])
+
+    print(f"  clusters: {len(inserted)} inserted (Raposa, Serra do Divisor)")
+    if inserted:
+        sample = conn.execute(
+            "SELECT id, calc_north, calc_south, calc_west, calc_east FROM fr24_clusters ORDER BY id"
+        ).fetchall()
+        for row in sample:
+            print(f"    {row['id']}: bounds N={row['calc_north']:.4f} S={row['calc_south']:.4f} "
+                  f"W={row['calc_west']:.4f} E={row['calc_east']:.4f}")
+    return inserted
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed QA fixtures for #15")
     parser.add_argument(
@@ -326,6 +445,7 @@ def main() -> int:
     conn = sqlite3.connect(db_path)
     try:
         area_ids = ensure_areas(conn, reset=args.reset)
+        ensure_clusters(conn, area_ids, reset=args.reset)
         ensure_events(conn, area_ids, reset=args.reset)
         conn.commit()
     finally:
