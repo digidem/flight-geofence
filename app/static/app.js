@@ -834,6 +834,44 @@ function eventRow(event) {
   </tr>`;
 }
 
+// Issue #15: extracted detail-card renderer.
+function renderEventDetailCard(event) {
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
+  const regLinks = registrationLinks(event.registration);
+  const csLinks = callsignLinks(event.callsign);
+  const posLinks = positionLinks(event.latitude, event.longitude);
+  const details = event.details || {};
+  const providerLks = providerLinks(event.provider);
+
+  const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
+
+  const rows = [
+    `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
+    `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
+    `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
+  ];
+  if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
+  if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
+  if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
+  if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
+  if (event.latitude != null && event.longitude != null) {
+    const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
+    rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
+  }
+  if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
+  if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
+  if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
+  if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
+  if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
+  if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
+  rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
+  rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
+
+  return `<h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
+      <dl class="detail-grid">${rows.join("")}</dl>
+      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
+}
+
 async function loadEventDetail(eventId) {
   const container = $("#event-detail-content");
   if (!container) return;
@@ -847,41 +885,7 @@ async function loadEventDetail(eventId) {
       container.innerHTML = `<p class="muted">Event not found.</p>`;
       return;
     }
-    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
-    const regLinks = registrationLinks(event.registration);
-    const csLinks = callsignLinks(event.callsign);
-    const posLinks = positionLinks(event.latitude, event.longitude);
-    const details = event.details || {};
-    const providerLks = providerLinks(event.provider);
-
-    const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
-
-    const rows = [
-      `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
-      `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
-      `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
-    ];
-    if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
-    if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
-    if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
-    if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
-    if (event.latitude != null && event.longitude != null) {
-      const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
-      rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
-    }
-    if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
-    if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
-    if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
-    if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
-    if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
-    if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
-    rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
-    rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
-
-    container.innerHTML = `
-      <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
-      <dl class="detail-grid">${rows.join("")}</dl>
-      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
+    container.innerHTML = renderEventDetailCard(event);
     await setupEventTrackPanel(event);
   } catch (error) {
     container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
@@ -937,18 +941,145 @@ async function setupEventTrackPanel(event) {
   button.disabled = false;
 }
 
+// ---- Eventos review queue + investigation drawer (issue #15) ------------
+let eventOpener = null;
+function setEventOpener(id, focusEl, view) {
+  eventOpener = { id, focusEl, view };
+}
+function clearEventOpener() {
+  eventOpener = null;
+}
+function eventosViewIsActive(view) {
+  if (view === "events") return !!($("#view-events")?.classList.contains("active"));
+  if (view === "dashboard") return !!($("#view-dashboard")?.classList.contains("active"));
+  return false;
+}
+
+async function loadEventReviewCounts() {
+  const container = $("#eventos-status-chips");
+  if (!container) return;
+  const status = await api("/api/status").catch(() => null);
+  const counts = status?.events?.review || {};
+  const order = ["unreviewed", "useful", "noise", "uncertain"];
+  container.innerHTML = order
+    .map((k) => {
+      const count = counts[k] ?? 0;
+      return `<button class="button ghost dark eventos-status-chip" data-status="${k}" data-count="${count}" type="button">${escapeHtml(t("review_" + k))} <strong>${count}</strong></button>`;
+    })
+    .join("");
+  const active = ($("#review-filter")?.value) || "";
+  document.querySelectorAll(".eventos-status-chip").forEach((btn) => {
+    if (btn.dataset.status === active) btn.classList.add("active");
+    btn.addEventListener("click", () => {
+      const select = $("#review-filter");
+      if (select) select.value = btn.dataset.status || "";
+      appState.reviewsOffset = 0;
+      Promise.all([loadReviews(), loadEventReviewCounts()]).catch(() => {});
+    });
+  });
+}
+
+async function openEventDrawer(eventId) {
+  const drawer = $("#eventos-drawer");
+  if (!drawer) return;
+  let event = null;
+  try {
+    const result = await api(`/api/events?limit=500`);
+    event = result.events.find((e) => e.id === eventId);
+  } catch { /* fall through */ }
+  if (!event) {
+    // Distinguish "event not found / fetch failed" from "queue is empty":
+    // the latter should not appear here because handleHashRoute only fires
+    // for a specific #/events/{id} deep link. Surface a precise diagnostic
+    // so a stale link, bad id, or genuine network error is not hidden
+    // behind the queue-empty copy.
+    drawer.innerHTML = `<p class="muted">${escapeHtml(t("review_event_not_found"))}</p>`;
+    drawer.hidden = false;
+    return;
+  }
+  const reviewForm = `
+    <h3 class="review-actions-title" data-i18n="eventos_classification_actions">Ações de classificação</h3>
+    <label class="review-form-label">${t("col_review")}<select class="review-status">
+      <option value="unreviewed">${t("review_unreviewed")}</option>
+      <option value="useful">${t("review_useful")}</option>
+      <option value="noise">${t("review_noise")}</option>
+      <option value="uncertain">${t("review_uncertain")}</option>
+    </select></label>
+    <label class="review-form-label">${t("review_notes")}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
+    <button class="button secondary review-save" data-event-id="${escapeHtml(event.id)}" type="button">${t("review_save")}</button>
+  `;
+  drawer.innerHTML = renderEventDetailCard(event) + reviewForm;
+  const statusSelect = drawer.querySelector(".review-status");
+  if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
+  drawer.hidden = false;
+  drawer.setAttribute("tabindex", "-1");
+  try { drawer.focus({ preventScroll: true }); } catch {}
+  if (eventOpener && eventOpener.id === eventId && eventosViewIsActive("events")) {
+    const card = $$(".review-card").find((c) => c.dataset.id === eventId);
+    const btn = card?.querySelector(".review-open");
+    if (btn) eventOpener.focusEl = btn;
+  }
+  const saveBtn = drawer.querySelector(".review-save");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      const reviewId = saveBtn.dataset.eventId || event.id;
+      const statusField = drawer.querySelector(".review-status");
+      const notesField = drawer.querySelector(".review-notes");
+      let errEl = drawer.querySelector(".review-save-error");
+      if (!errEl) {
+        errEl = document.createElement("div");
+        errEl.className = "error review-save-error";
+        errEl.setAttribute("role", "alert");
+        errEl.hidden = true;
+        drawer.append(errEl);
+      }
+      errEl.hidden = true;
+      errEl.textContent = "";
+      try {
+        await withLoading(saveBtn, drawer, async () => {
+          await api(`/api/events/${encodeURIComponent(reviewId)}/review`, {
+            method: "POST",
+            body: JSON.stringify({
+              status: statusField ? statusField.value : "unreviewed",
+              notes: notesField ? notesField.value : "",
+            }),
+          });
+          await loadStatus();
+          await loadReviews();
+          await loadEventReviewCounts();
+        });
+      } catch (error) {
+        errEl.textContent = error.message;
+        errEl.hidden = false;
+      }
+    });
+  }
+  await setupEventTrackPanel(event);
+}
+
 function handleHashRoute() {
   const hash = window.location.hash || "";
   const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
+  const drawer = $("#eventos-drawer");
   if (match) {
-    $$(".tab").forEach((t) => { t.classList.remove("active"); try { t.setAttribute("aria-selected", "false"); } catch {} });
-    $$(".view").forEach((v) => v.classList.remove("active"));
-    const detailView = $("#view-event-detail");
-    if (detailView) {
-      detailView.classList.add("active");
-      loadEventDetail(match[1]);
-      try { detailView.setAttribute("tabindex", "-1"); detailView.focus(); } catch {}
+    const tab = $("#tab-events");
+    if (tab) tab.click();
+    loadEventReviewCounts().catch(() => {});
+    openEventDrawer(match[1]).catch(() => {});
+    return;
+  }
+  if (drawer && !drawer.hidden) {
+    drawer.hidden = true;
+    drawer.innerHTML = "";
+    if (
+      eventOpener &&
+      eventOpener.focusEl &&
+      document.body.contains(eventOpener.focusEl) &&
+      eventosViewIsActive(eventOpener.view)
+    ) {
+      try { eventOpener.focusEl.focus(); } catch {}
     }
+    clearEventOpener();
   }
 }
 async function loadStatus() {
@@ -1279,6 +1410,7 @@ function reviewCard(event) {
     : "—";
   return `<article class="review-card" data-id="${escapeHtml(event.id)}">
     <div><strong>${eventLabel(event.event_type)} · ${hexDisplay}</strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${escapeHtml(formatTime(event.occurred_at))}</p></div>
+    <button class="button ghost dark review-open" type="button" data-i18n="eventos_open_action">${t("eventos_open_action")}</button>
     <label>${t("col_review")}<select class="review-status"><option value="unreviewed">${t("review_unreviewed")}</option><option value="useful">${t("review_useful")}</option><option value="noise">${t("review_noise")}</option><option value="uncertain">${t("review_uncertain")}</option></select></label>
     <label>${t('review_notes')}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save">${t("review_save")}</button>
@@ -1318,6 +1450,13 @@ async function loadReviews() {
       : `<p class="muted">${t("review_no_events")}</p>`;
   $$(".review-card").forEach((card, index) => {
     card.querySelector(".review-status").value = events[index].review_status;
+    const openBtn = card.querySelector(".review-open");
+    if (openBtn) {
+      openBtn.addEventListener("click", () => {
+        setEventOpener(card.dataset.id, openBtn, "events");
+        window.location.hash = "#/events/" + encodeURIComponent(card.dataset.id);
+      });
+    }
     const saveBtn = card.querySelector(".review-save");
     saveBtn.addEventListener("click", async () => {
       // ensure inline error container exists
@@ -1341,6 +1480,8 @@ async function loadReviews() {
             }),
           });
           await loadStatus();
+          await loadReviews();
+          await loadEventReviewCounts();
         });
       } catch (error) {
         errEl.textContent = error.message;
@@ -1713,6 +1854,21 @@ async function init() {
   try { initSettingsStepper(); } catch {}
   try { initHelpToggles(); } catch {}
 }
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const drawer = document.getElementById("eventos-drawer");
+  if (!drawer || drawer.hidden) return;
+  event.preventDefault();
+  if (eventOpener && (history.length ?? 1) > 1) {
+    history.back();
+    return;
+  }
+  const target = window.location.pathname + window.location.search;
+  history.replaceState(null, "", target);
+  if (typeof handleHashRoute === "function") handleHashRoute();
+});
+}
 window.addEventListener("hashchange", handleHashRoute);
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
@@ -1824,6 +1980,13 @@ $$(".tab").forEach((tab) => {
   });
 });
 
+$("#monitoramento-map")?.addEventListener("click", (event) => {
+  const dot = event.target.closest && event.target.closest("a.event-dot");
+  if (!dot) return;
+  const match = (dot.getAttribute("href") || "").match(/^#\/events\/([a-f0-9-]+)$/i);
+  if (!match) return;
+  setEventOpener(match[1], dot, "dashboard");
+});
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
 $("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
 $("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));

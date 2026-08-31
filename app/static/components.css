@@ -821,3 +821,88 @@ label.check.area-label {
 .detail-back {
   margin-top: 16px;
 }
+
+
+/* Eventos review queue + investigation drawer (issue #15) — uses only
+   existing tokens (--paper/--line/--burgundy/--forest/--amber/--muted/--ink)
+   to keep the surface visually consistent with the rest of the app. */
+.eventos-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.eventos-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.eventos-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.eventos-status-chip {
+  /* Inherits .button.ghost.dark from the host class; pad/round to pill. */
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.eventos-status-chip[data-count="0"] {
+  opacity: 0.5;
+}
+.eventos-status-chip.active {
+  background: var(--burgundy);
+  color: var(--paper);
+}
+.eventos-body {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1024px) {
+  .eventos-body {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    align-items: start;
+  }
+}
+.eventos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.eventos-drawer {
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-y: auto;
+}
+.eventos-drawer h3.review-actions-title {
+  margin: 12px 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.review-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+@media (max-width: 1023px) {
+  .eventos-drawer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 50vh;
+    z-index: 10;
+    box-shadow: 0 -8px 16px var(--shadow);
+  }
+}
+@media (max-width: 599px) {
+  .eventos-drawer {
+    max-height: 100vh;
+  }
+}
