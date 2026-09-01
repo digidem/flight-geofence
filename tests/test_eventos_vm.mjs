@@ -1228,6 +1228,75 @@ check(
 );
 fakeFetch.route = _origRoute;
 
+// ---- Scenario 12: round-3 Sonnet review fixes -----------------------------
+// Covers BLOCKER 2 (track panel preservation across re-renders) and
+// BLOCKER 1 (hashchange listener is registered for case A/B in
+// production; the vm stub's addEventListener is a no-op, so we verify
+// the registration by reading sandbox.window's listener list via a
+// script-side probe — but the vm stub doesn't track listeners, so we
+// settle for verifying the surface behavior: openEventDrawer + the
+// track-panel delegated click handler still work after re-render).
+
+// ---- Scenario 12: round-3 Sonnet review fixes -----------------------------
+// BLOCKER 1: hashchange listener — the vm stub's addEventListener is a
+// no-op, so we can't exercise it directly. We assert the observable
+// surface: openEventDrawer + the track-panel click handler chain still
+// works after re-render (the pre-round-3 bug was that re-render
+// detached the track panel; that's now fixed by moving it out of
+// the drawer in index.html).
+// BLOCKER 2: track panel preservation — the panel now lives as a
+// sibling of the drawer inside #view-events, so drawer.innerHTML
+// rewrites no longer detach it.
+
+console.log("\nScenario 12: round-3 Sonnet review fixes");
+configureDefaultRoutes();
+await openEventDrawer("a0abcdef");
+await settle();
+const _trackState1 = await vm.runInContext(
+  "({ inDoc: !!document.getElementById('event-track-panel'), inDrawer: !!document.getElementById('eventos-drawer').querySelector('#event-track-panel'), trackParent: (() => { const p = document.getElementById('event-track-panel'); if (!p) return 'no-parent'; const pr = p._parentRef; return pr ? (pr.id || pr.tagName) : 'no-parent-ref'; })() })",
+  sandbox,
+);
+check(
+  "(12a/BLOCKER2) #event-track-panel exists in the document after first open",
+  _trackState1.inDoc === true,
+  `inDoc=${_trackState1.inDoc} inDrawer=${_trackState1.inDrawer} trackParent=${_trackState1.trackParent}`,
+);
+check(
+  "(12b/BLOCKER2) #event-track-panel is NOT nested inside the drawer (parent is the eventos-body, not the drawer)",
+  _trackState1.trackParent !== "ASIDE" && _trackState1.trackParent !== "eventos-drawer",
+  `trackParent=${_trackState1.trackParent}`,
+);
+// Re-open the drawer for a different event — the track panel must
+// survive, and setupEventTrackPanel must still be able to update it.
+await openEventDrawer("a1abcdef");
+await settle();
+const _trackState2 = await vm.runInContext(
+  "({ inDoc: !!document.getElementById('event-track-panel'), eventId: document.getElementById('event-track-panel').dataset.eventId })",
+  sandbox,
+);
+check(
+  "(12d/BLOCKER2) #event-track-panel still exists after re-open",
+  _trackState2.inDoc === true,
+  `inDoc=${_trackState2.inDoc}`,
+);
+check(
+  "(12e/BLOCKER2) track-panel dataset.eventId is updated to the re-opened event",
+  _trackState2.eventId === "a1abcdef",
+  `eventId=${_trackState2.eventId} expected=a1abcdef`,
+);
+// Verify the hashchange listener registration surface: a direct read
+// of the sandbox's window listeners is the closest we can get (the
+// stub makes addEventListener a no-op, so we assert the
+// post-condition that openEventDrawer + handleHashRoute work
+// together — Scenario 4 already does this via direct calls; here
+// we confirm the listener side-effect at the script source level.
+const _appSrc = fs.readFileSync(APP_JS, "utf8");
+check(
+  "(12f/BLOCKER1) window.addEventListener('hashchange', handleHashRoute) is present in the source",
+  /window\.addEventListener\(\s*["']hashchange["']\s*,\s*handleHashRoute\s*\)/.test(_appSrc),
+  `expected regex match in app.js`,
+);
+
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);
   process.exit(1);

@@ -1030,6 +1030,11 @@ async function openEventDrawer(eventId) {
     <label class="review-form-label">${t("review_notes")}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save" data-event-id="${escapeHtml(event.id)}" type="button">${t("review_save")}</button>
   `;
+  // Issue #15 round 3 (BLOCKER): the #event-track-panel used to be
+  // nested inside #eventos-drawer, so re-rendering drawer.innerHTML
+  // detached it and broke the FR24 track-fetch flow. The panel now
+  // lives next to the drawer (in index.html), so a plain innerHTML
+  // rewrite of the drawer no longer affects it.
   drawer.innerHTML = renderEventDetailCard(event) + reviewForm;
   const statusSelect = drawer.querySelector(".review-status");
   if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
@@ -1552,6 +1557,13 @@ function wireReviewCard(card, event) {
           if (replacement) {
             card.replaceWith(replacement);
             wireReviewCard(replacement, updated);
+            // Issue #15 round 3 (RISK): if the open drawer's opener points
+            // at the card we just replaced, refresh its focusEl so
+            // closeEventDrawer's focus-restoration still lands on the
+            // new (replacement) Abrir evento button.
+            if (eventOpener && eventOpener.id === updated.id && eventOpener.focusEl === card.querySelector(".review-open")) {
+              eventOpener.focusEl = replacement.querySelector(".review-open");
+            }
           }
         }
         await loadStatus();
@@ -1948,6 +1960,15 @@ document.addEventListener("keydown", (event) => {
   if (typeof handleHashRoute === "function") handleHashRoute();
 });
 }
+// Issue #15 round 3 (BLOCKER): re-add the hashchange listener. The
+// original lane registered it right after init() so that "Abrir evento"
+// (case A) and Monitoramento map-dot clicks (case B) — both of which only
+// mutate `window.location.hash` — actually trigger handleHashRoute() in
+// a real browser. The vm stub's addEventListener is a no-op, so this
+// regression went undetected by tests/test_eventos_vm.mjs.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("hashchange", handleHashRoute);
+}
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
 }
@@ -2077,7 +2098,12 @@ $("#monitoramento-map")?.addEventListener("click", (event) => {
   if (!dot) return;
   const match = (dot.getAttribute("href") || "").match(/^#\/events\/([a-f0-9-]+)$/i);
   if (!match) return;
-  setEventOpener(match[1], dot, "dashboard");
+  // Issue #15 round 3 (RISK): handleHashRoute force-activates the events
+  // tab before opening the drawer, so the drawer's "home" view is
+  // always "events" — not "dashboard". Storing "events" lets the Escape
+  // focus-restoration gate (eventosViewIsActive(eventOpener.view)) work
+  // correctly for the map-dot entry path.
+  setEventOpener(match[1], dot, "events");
 });
 $("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
 $("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
