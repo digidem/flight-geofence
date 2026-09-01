@@ -1134,7 +1134,7 @@ async function openEventDrawer(eventId) {
 }
 function handleHashRoute() {
   const hash = window.location.hash || "";
-  const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
+  const match = decodeURIComponent(window.location.hash).match(/^#\/events\/([\w-]+)$/);
   const drawer = $("#eventos-drawer");
   if (match) {
     const tab = $("#tab-events");
@@ -2107,7 +2107,7 @@ $$(".tab").forEach((tab) => {
 $("#monitoramento-map")?.addEventListener("click", (event) => {
   const dot = event.target.closest && event.target.closest("a.event-dot");
   if (!dot) return;
-  const match = (dot.getAttribute("href") || "").match(/^#\/events\/([a-f0-9-]+)$/i);
+  const match = decodeURIComponent(dot.getAttribute("href") || "").match(/^#\/events\/([\w-]+)$/);
   if (!match) return;
   // Issue #15 round 4 (RISK 2): the dot lives inside #view-dashboard,
   // which is display:none while the events view is active. The round-3

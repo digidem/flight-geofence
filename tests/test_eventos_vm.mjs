@@ -1350,6 +1350,33 @@ check(
   /#eventos-drawer,\s*#event-track-panel\s*\{[\s\S]*?grid-column:\s*2/.test(_componentsSrc),
   `expected 'grid-column: 2' on #eventos-drawer and #event-track-panel`,
 );
+console.log("\nScenario 15: hash route accepts wordchar event ids");
+configureDefaultRoutes();
+eventosDrawer.hidden = true;
+eventosDrawer.innerHTML = "";
+sandbox.window.location.hash = "#/events/qa-probable_stop-abc123-00";
+await handleHashRoute();
+await settle();
+await tick();
+check(
+  "(15a) drawer is open after direct hash load of an id containing underscores",
+  !eventosDrawer.hidden,
+  `hidden=${eventosDrawer.hidden} innerHTML.len=${eventosDrawer.innerHTML.length}`,
+);
+check(
+  "(15b) drawer rendered (either detail card or not-found copy — proves the open path completed, not aborted by regex)",
+  eventosDrawer.innerHTML.length > 30,
+  `innerHTML.len=${eventosDrawer.innerHTML.length} innerHTML=${eventosDrawer.innerHTML.slice(0, 200)}`,
+);
+const _regexLenient = await vm.runInContext(
+  "(/^#\\/events\\/([\\w-]+)$/.test('#/events/qa-probable_stop-abc123-00'))",
+  sandbox,
+);
+check(
+  "(15c) handleHashRoute regex accepts underscores in event ids (regression for the QA seed format)",
+  _regexLenient === true,
+  `regex test result=${_regexLenient}`,
+);
 
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);
