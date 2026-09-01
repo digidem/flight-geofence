@@ -1296,6 +1296,28 @@ check(
   /window\.addEventListener\(\s*["']hashchange["']\s*,\s*handleHashRoute\s*\)/.test(_appSrc),
   `expected regex match in app.js`,
 );
+console.log("\nScenario 13: round-4 Sonnet review fixes");
+// Map-dot handler stores eventOpener.view = "dashboard" (the view the
+// dot lives in), not "events" (the view the drawer is shown in).
+// The close path then correctly skips focus restoration when the
+// opener's view isn't active, instead of attempting a no-op focus
+// into a display:none ancestor.
+const _appSrc2 = fs.readFileSync(APP_JS, "utf8");
+// The map-dot handler line: search for the substring that captures
+// the third argument of the setEventOpener call from the
+// monitoramento-map click handler.
+check(
+  "(13a/RISK2) map-dot handler stores eventOpener.view = 'dashboard' (not 'events') so focus restoration doesn't attempt a no-op on a hidden element",
+  /\$\("#monitoramento-map"\)[^]*?setEventOpener\([^,]+,\s*[^,]+,\s*["']dashboard["']\s*\)/s.test(_appSrc2),
+  `expected setEventOpener(..., \"dashboard\") in the map-dot handler`,
+);
+// Drawer save handler refreshes eventOpener.focusEl after the
+// in-place card replacement, mirroring the card-side fix.
+check(
+  "(13b/RISK1) drawer save handler refreshes eventOpener.focusEl after card.replaceWith (so closeEventDrawer's focus restoration lands on the new button)",
+  /openEventDrawer[\s\S]*?cardEl\.replaceWith[\s\S]*?eventOpener\.focusEl\s*=\s*replacement\.querySelector/s.test(_appSrc2),
+  `expected eventOpener.focusEl = replacement.querySelector(...) inside openEventDrawer's save handler`,
+);
 
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);

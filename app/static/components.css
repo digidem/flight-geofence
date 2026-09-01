@@ -853,7 +853,6 @@ label.check.area-label {
 .eventos-status-chip.active {
   background: var(--burgundy);
   color: var(--paper);
-}
 .eventos-body {
   display: grid;
   gap: 16px;
@@ -863,6 +862,14 @@ label.check.area-label {
   .eventos-body {
     grid-template-columns: minmax(0, 1fr) 380px;
     align-items: start;
+  }
+  /* Issue #15 round 4 (RISK 3): the track panel and the drawer now
+  share the events body's 2-column grid on desktop. Put both in
+  column 2 so the track panel renders right under the open drawer
+  instead of auto-placing in row 2, column 1. */
+  #eventos-drawer,
+  #event-track-panel {
+    grid-column: 2;
   }
 }
 .eventos-list {

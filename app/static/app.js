@@ -1095,9 +1095,21 @@ async function openEventDrawer(eventId) {
               if (replacement) {
                 cardEl.replaceWith(replacement);
                 wireReviewCard(replacement, updated);
+                // Issue #15 round 4 (RISK 1): mirror the card-side fix
+                // for the drawer-side save path. If the open drawer's
+                // opener pointed at the card we just replaced,
+                // refresh its focusEl so closeEventDrawer's focus
+                // restoration lands on the new (replacement) button.
+                if (
+                  eventOpener &&
+                  eventOpener.id === updated.id &&
+                  cardEl.querySelector &&
+                  eventOpener.focusEl === cardEl.querySelector(".review-open")
+                ) {
+                  eventOpener.focusEl = replacement.querySelector(".review-open");
+                }
               }
             }
-          } else {
             // Fallback: no card visible (deep-link entry), just refresh counters.
             await loadStatus();
             await loadEventReviewCounts();
@@ -2092,27 +2104,21 @@ $$(".tab").forEach((tab) => {
     }
   });
 });
-
 $("#monitoramento-map")?.addEventListener("click", (event) => {
   const dot = event.target.closest && event.target.closest("a.event-dot");
   if (!dot) return;
   const match = (dot.getAttribute("href") || "").match(/^#\/events\/([a-f0-9-]+)$/i);
   if (!match) return;
-  // Issue #15 round 3 (RISK): handleHashRoute force-activates the events
-  // tab before opening the drawer, so the drawer's "home" view is
-  // always "events" — not "dashboard". Storing "events" lets the Escape
-  // focus-restoration gate (eventosViewIsActive(eventOpener.view)) work
-  // correctly for the map-dot entry path.
-  setEventOpener(match[1], dot, "events");
-});
-$("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
-$("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
-$("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
-$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#view-dashboard"), loadMonitoramento));
-$("#area-filter").addEventListener("click", (event) => {
-  appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
-  appState.areasOffset = 0;
-  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+  // Issue #15 round 4 (RISK 2): the dot lives inside #view-dashboard,
+  // which is display:none while the events view is active. The round-3
+  // "events" change was a no-op in browsers (focusing a hidden element
+  // is ignored). Storing "dashboard" — the view the dot actually lives
+  // in — matches what the close path needs to know: whether the opener's
+  // view is the one currently active. If the user is on the events
+  // view (always, for case B), the close path correctly skips focus
+  // restoration to the dot and the user keeps focus on whatever they
+  // were on in the events view.
+  setEventOpener(match[1], dot, "dashboard");
 });
 // Ver todos em Eventos button on Monitoramento (issue #14).
 $("#monitoramento-view-all-events")?.addEventListener("click", (event) => {
