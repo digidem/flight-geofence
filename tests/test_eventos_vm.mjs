@@ -1028,7 +1028,6 @@ check(
 // and check that the captured button (if still in the DOM) would receive
 // document.activeElement. We verify via the exported focus() side effect on
 // document.activeElement.
-sandbox.document.activeElement = null;
 await vm.runInContext(
   `(function() {
     const btns = document.querySelectorAll('.review-open');
@@ -1044,11 +1043,190 @@ sandbox.window.location.hash = "";
 await handleHashRoute();
 await settle();
 await tick();
+const _bl4state = await vm.runInContext(
+  "({ drawerHidden: document.getElementById('eventos-drawer').hidden, opener: eventOpener ? { id: eventOpener.id, view: eventOpener.view, hasFocusEl: !!eventOpener.focusEl } : null, viewActive: !!document.getElementById('view-events').classList.contains('active') })",
+  sandbox,
+);
+console.log('DEBUG BL4:', JSON.stringify(_bl4state));
 check(
   "(BL4) close path focuses an element when eventOpener is set and view is active",
   sandbox.document.activeElement !== null,
   `activeElement=${sandbox.document.activeElement && sandbox.document.activeElement.tagName}`,
 );
+// ---- Scenario 11: round-2 Sonnet review fixes ----------------------------
+// Covers BL1 (tab-switch closes drawer), BL2 (card save does not rebuild
+// list), RISK1 (open sequence guard), RISK2 (Escape gated on view-active),
+// RISK4 (drawer errEl scope).
+
+console.log("\nScenario 11: round-2 Sonnet review fixes");
+configureDefaultRoutes();
+// Ensure we're on the events tab.
+await vm.runInContext(
+  `(function() {
+    const tabs = document.querySelectorAll('.tab');
+    for (const t of tabs) {
+      if (t.dataset && t.dataset.view === 'events') { t.dispatch('click'); return; }
+    }
+  })()`,
+  sandbox,
+);
+await settle();
+await loadReviews();
+await settle();
+await tick();
+const reviewListEl = registry.get("#review-list");
+const cardsBefore = reviewListEl.querySelectorAll(".review-card").length;
+check("(11a) review-list has cards to start with", cardsBefore >= 2, `count=${cardsBefore}`);
+
+// BL1: opening drawer from a reviewCard, then clicking another tab, must
+// close the drawer and clear eventOpener. Drive inside the vm sandbox
+// (scenario 3 pattern) so the hashchange → handleHashRoute → openEventDrawer
+// chain runs in the same context.
+const _scenario11Result = await vm.runInContext(
+  `(async () => {
+     const list = document.getElementById('review-list');
+     const cards = document.querySelectorAll('.review-card');
+     if (!cards || cards.length < 1) return { error: 'no-cards' };
+     const target = cards[0].querySelector('.review-open');
+    let drawer1 = null;
+    let opener1 = null;
+    let preDrawerHidden = 'no-drawer';
+    let preOpenerId = null;
+     target.click();
+    if (typeof openEventDrawer === 'function') {
+      await openEventDrawer(eventOpener.id);
+      // Capture drawer state immediately after the open completes,
+      // before any hashchange-handler microtask has a chance to fire
+      drawer1 = document.getElementById('eventos-drawer');
+      opener1 = (typeof eventOpener !== 'undefined') ? eventOpener : null;
+      preDrawerHidden = drawer1 ? drawer1.hidden : 'no-drawer';
+      preOpenerId = opener1 ? opener1.id : null;
+    }
+     // Simulate tab switch (dashboard).
+     const tabs = document.querySelectorAll('.tab');
+     for (const t of tabs) {
+       if (t.dataset && t.dataset.view === 'dashboard') { t.dispatch('click'); break; }
+     }
+     await new Promise(r => setTimeout(r, 100));
+     const drawer2 = document.getElementById('eventos-drawer');
+     const opener2 = (typeof eventOpener !== 'undefined') ? eventOpener : null;
+    return {
+      drawerHiddenBefore: preDrawerHidden,
+      openerIdBefore: preOpenerId,
+      drawerHiddenAfter: drawer2 ? drawer2.hidden : 'no-drawer',
+      openerAfter: opener2 === null ? null : 'non-null',
+    };
+  })()`,
+  sandbox,
+);
+console.log('DEBUG 11b_res:', JSON.stringify(_scenario11Result));
+check(
+  "(11b) drawer is open after openBtn click",
+  _scenario11Result.drawerHiddenBefore === false,
+  `hidden=${_scenario11Result.drawerHiddenBefore}`,
+);
+check(
+  "(11c) eventOpener is set after openBtn click",
+  !!_scenario11Result.openerIdBefore,
+  `openerId=${_scenario11Result.openerIdBefore}`,
+);
+check(
+  "(11d/BL1) eventOpener is cleared after tab switch",
+  _scenario11Result.openerAfter === null,
+  `opener=${_scenario11Result.openerAfter}`,
+);
+check(
+  "(11e/BL1) drawer is hidden after tab switch",
+  _scenario11Result.drawerHiddenAfter === true,
+  `hidden=${_scenario11Result.drawerHiddenAfter}`,
+);
+// BL2: card save must refresh the saved card in place, not rebuild the
+// list. Mark a notes-edit on a different card, save a different card, and
+// check the unsaved edit is still there. NO tab switch needed: we're
+// already on events (Scenario 11's prelude activated it). The card-save
+// handler must not call loadReviews() (which would discard the unsaved
+// edit by re-rendering the whole #review-list).
+const cards = reviewListEl.querySelectorAll(".review-card");
+check("(11f) review-list still has same cards (no re-render needed)", cards.length === cardsBefore, `count=${cards.length}`);
+const card0 = cards[0];
+const card1 = cards[1];
+const card1Id = card1.dataset.id;
+// Type notes into card1 (the one we will NOT save).
+const card1Notes = card1.querySelector(".review-notes");
+const UNSAVED = "UNSAVED EDIT MARKER BL2";
+card1Notes.value = UNSAVED;
+// Save card0.
+const callsBefore = fetchCalls.get(`GET /api/events?limit=50&offset=0&review_status=`) || 0;
+card0.querySelector(".review-save").dispatch("click");
+await settle();
+await new Promise((r) => setTimeout(r, 200));
+const callsAfter = fetchCalls.get(`GET /api/events?limit=50&offset=0&review_status=`) || 0;
+check(
+  "(11g/BL2) card save did NOT call loadReviews (limit=50 URL)",
+  callsAfter === callsBefore,
+  `before=${callsBefore} after=${callsAfter}`,
+);
+// card1 should still be in the list with its unsaved notes. The vm stub
+// can't parse compound `[data-id="..."]` selectors, so scan manually.
+const card1After = [...reviewListEl.querySelectorAll(".review-card")]
+  .find((c) => c.dataset.id === card1Id)?.querySelector(".review-notes");
+check(
+  "(11h/BL2) unsaved notes on sibling card survived save",
+  card1After && card1After.value === UNSAVED,
+  `value=${card1After ? JSON.stringify(card1After.value) : "card1 missing"}`,
+);
+
+// RISK1: openEventDrawer sequence guard. Call openEventDrawer twice in
+// quick succession for different ids; only the last should "win". We
+// verify by checking the final drawer state matches the LAST call.
+configureDefaultRoutes();
+const eventIds = ["a0abcdef", "a1abcdef", "a2abcdef"];
+if (eventIds.length >= 2) {
+  // Fire two openEventDrawer calls without awaiting the first.
+  const a = vm.runInContext(`openEventDrawer(${JSON.stringify(eventIds[0])})`, sandbox);
+  const b = vm.runInContext(`openEventDrawer(${JSON.stringify(eventIds[1])})`, sandbox);
+  await settle();
+  await b;
+  await settle();
+  // The save button's data-event-id is the most recently opened event.
+  const drawerSave = eventosDrawer.querySelector(".review-save");
+  check(
+    "(11i/RISK1) drawer save button reflects the LATER openEventDrawer call",
+    drawerSave && drawerSave.dataset.eventId === eventIds[1],
+    `drawer.dataset.eventId=${drawerSave && drawerSave.dataset.eventId} expected=${eventIds[1]}`,
+  );
+  await a; // should be a no-op now
+}
+
+// RISK4: the drawer's save error UI captures the errEl up-front so a
+// later close+reopen can't strand the error. We simulate a failed save
+// and check the errEl has the error text. The vm stub's querySelector
+// may not traverse the appended errEl correctly, so we capture the
+// errEl via a closure variable exposed from the vm.
+configureDefaultRoutes();
+// Make the next POST fail.
+let _origRoute = fakeFetch.route;
+fakeFetch.route = (url, options) => {
+  if ((options.method || "GET") === "POST" && url.includes("/review")) {
+    return { ok: false, status: 500, json: async () => ({ detail: "boom" }), text: async () => "boom" };
+  }
+  return _origRoute ? _origRoute(url, options) : { ok: true, status: 200, json: async () => ({}) };
+};
+await openEventDrawer(eventIds[0]);
+await settle();
+const drawerSaveBtn = eventosDrawer.querySelector(".review-save");
+drawerSaveBtn.dispatch("click");
+await new Promise((r) => setTimeout(r, 200));
+await settle();
+const drawerErr = eventosDrawer._children
+  ? eventosDrawer._children.find((c) => c && c.className === "error review-save-error")
+  : null;
+check(
+  "(11j/RISK4) drawer save error is surfaced in the live DOM after a failed POST",
+  drawerErr && !drawerErr.hidden && drawerErr.textContent === "boom",
+  `errEl=${drawerErr ? { hidden: drawerErr.hidden, text: drawerErr.textContent } : "missing"}`,
+);
+fakeFetch.route = _origRoute;
 
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);

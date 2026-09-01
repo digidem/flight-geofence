@@ -949,6 +949,21 @@ function setEventOpener(id, focusEl, view) {
 function clearEventOpener() {
   eventOpener = null;
 }
+function closeEventDrawer() {
+  const drawer = $("#eventos-drawer");
+  if (!drawer || drawer.hidden) return;
+  drawer.hidden = true;
+  drawer.innerHTML = "";
+  if (
+    eventOpener &&
+    eventOpener.focusEl &&
+    document.body.contains(eventOpener.focusEl) &&
+    eventosViewIsActive(eventOpener.view)
+  ) {
+    try { eventOpener.focusEl.focus(); } catch {}
+  }
+  clearEventOpener();
+}
 function eventosViewIsActive(view) {
   if (view === "events") return !!($("#view-events")?.classList.contains("active"));
   if (view === "dashboard") return !!($("#view-dashboard")?.classList.contains("active"));
@@ -978,15 +993,22 @@ async function loadEventReviewCounts() {
     });
   });
 }
+// Monotonic counter for openEventDrawer calls (issue #15 round 2 RISK1):
+// lets a later open() invalidate any earlier in-flight open's results
+// so a slow A response can't overwrite a fast B already on screen.
+let _openEventDrawerSeq = 0;
 
 async function openEventDrawer(eventId) {
   const drawer = $("#eventos-drawer");
   if (!drawer) return;
+  const seq = ++_openEventDrawerSeq;
   let event = null;
   try {
     const result = await api(`/api/events?limit=500`);
+    if (seq !== _openEventDrawerSeq) return; // a newer open() has superseded us
     event = result.events.find((e) => e.id === eventId);
   } catch { /* fall through */ }
+  if (seq !== _openEventDrawerSeq) return; // superseded while we awaited
   if (!event) {
     // Distinguish "event not found / fetch failed" from "queue is empty":
     // the latter should not appear here because handleHashRoute only fires
@@ -1025,6 +1047,13 @@ async function openEventDrawer(eventId) {
       const reviewId = saveBtn.dataset.eventId || event.id;
       const statusField = drawer.querySelector(".review-status");
       const notesField = drawer.querySelector(".review-notes");
+      // Issue #15 round 2 (RISK4): capture errEl up-front so the catch
+      // below can still surface the failure even if the drawer is
+      // closed and re-opened for a different event while the save is
+      // in flight. A fresh DOM node is appended to the CURRENT drawer
+      // (the one with the save button the user clicked), not queried
+      // after the await, which could find a stale node from a
+      // previous event's render.
       let errEl = drawer.querySelector(".review-save-error");
       if (!errEl) {
         errEl = document.createElement("div");
@@ -1035,6 +1064,11 @@ async function openEventDrawer(eventId) {
       }
       errEl.hidden = true;
       errEl.textContent = "";
+      // After the save, find the matching review-card (if the queue
+      // is visible) and refresh just that card instead of the whole
+      // list (BL2 mirror of the card-side fix). This protects any
+      // unsaved edits the reviewer may have started on a sibling card.
+      const cardEl = $$(`.review-card[data-id="${reviewId}"]`)[0] || null;
       try {
         await withLoading(saveBtn, drawer, async () => {
           await api(`/api/events/${encodeURIComponent(reviewId)}/review`, {
@@ -1044,19 +1078,43 @@ async function openEventDrawer(eventId) {
               notes: notesField ? notesField.value : "",
             }),
           });
-          await loadStatus();
-          await loadReviews();
-          await loadEventReviewCounts();
+          if (cardEl && document.body.contains(cardEl)) {
+            const refreshed = await api(
+              `/api/events?limit=500&review_status=${encodeURIComponent($("#review-filter")?.value || "")}`,
+            ).catch(() => null);
+            const updated = refreshed?.events?.find((e) => e.id === reviewId);
+            if (updated) {
+              const fresh = document.createElement("div");
+              fresh.innerHTML = reviewCard(updated).trim();
+              const replacement = fresh.firstElementChild;
+              if (replacement) {
+                cardEl.replaceWith(replacement);
+                wireReviewCard(replacement, updated);
+              }
+            }
+          } else {
+            // Fallback: no card visible (deep-link entry), just refresh counters.
+            await loadStatus();
+            await loadEventReviewCounts();
+          }
         });
       } catch (error) {
-        errEl.textContent = error.message;
-        errEl.hidden = false;
+        // in the DOM (and not hidden by closeEventDrawer), this surfaces
+        // errEl was captured before the await. If the drawer was closed
+        // mid-save, errEl is detached from the DOM but still exists in
+        // memory; assigning to textContent is harmless. The visible
+        // result is correct: the errEl isn't shown because it's not
+        // attached, but if the drawer is re-opened the errEl isn't
+        // reused (a new one is created on the next save click).
+        if (errEl) {
+          errEl.textContent = error.message;
+          errEl.hidden = false;
+        }
       }
     });
   }
   await setupEventTrackPanel(event);
 }
-
 function handleHashRoute() {
   const hash = window.location.hash || "";
   const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
@@ -1068,19 +1126,7 @@ function handleHashRoute() {
     openEventDrawer(match[1]).catch(() => {});
     return;
   }
-  if (drawer && !drawer.hidden) {
-    drawer.hidden = true;
-    drawer.innerHTML = "";
-    if (
-      eventOpener &&
-      eventOpener.focusEl &&
-      document.body.contains(eventOpener.focusEl) &&
-      eventosViewIsActive(eventOpener.view)
-    ) {
-      try { eventOpener.focusEl.focus(); } catch {}
-    }
-    clearEventOpener();
-  }
+  if (drawer && !drawer.hidden) closeEventDrawer();
 }
 async function loadStatus() {
   // Lightweight global status loader (issue #14): keeps phase / version /
@@ -1106,7 +1152,6 @@ async function loadStatus() {
     return status;
   });
 }
-
 // ---- Monitoramento (issue #14) -------------------------------------------
 // Orchestrator + renderers for the redesigned dashboard surface.
 // `loadMonitoramento()` composes loadStatus() with the events, FR24 status,
@@ -1449,46 +1494,73 @@ async function loadReviews() {
       ? events.map(reviewCard).join("")
       : `<p class="muted">${t("review_no_events")}</p>`;
   $$(".review-card").forEach((card, index) => {
-    card.querySelector(".review-status").value = events[index].review_status;
-    const openBtn = card.querySelector(".review-open");
-    if (openBtn) {
-      openBtn.addEventListener("click", () => {
-        setEventOpener(card.dataset.id, openBtn, "events");
-        window.location.hash = "#/events/" + encodeURIComponent(card.dataset.id);
-      });
-    }
-    const saveBtn = card.querySelector(".review-save");
-    saveBtn.addEventListener("click", async () => {
-      // ensure inline error container exists
-      let errEl = card.querySelector(".review-save-error");
-      if (!errEl) {
-        errEl = document.createElement("div");
-        errEl.className = "error review-save-error";
-        errEl.setAttribute("role", "alert");
-        errEl.hidden = true;
-        card.append(errEl);
-      }
-      errEl.hidden = true;
-      errEl.textContent = "";
-      try {
-        await withLoading(saveBtn, card, async () => {
-          await api(`/api/events/${card.dataset.id}/review`, {
-            method: "POST",
-            body: JSON.stringify({
-              status: card.querySelector(".review-status").value,
-              notes: card.querySelector(".review-notes").value,
-            }),
-          });
-          await loadStatus();
-          await loadReviews();
-          await loadEventReviewCounts();
-        });
-      } catch (error) {
-        errEl.textContent = error.message;
-        errEl.hidden = false;
-      }
-      });
+    wireReviewCard(card, events[index]);
   });
+  });
+}
+
+// Per-card wiring (issue #15 round 2 BL2 refactor): shared between the
+// initial render and the post-save in-place refresh so a saved card's
+// listeners (open-btn → setEventOpener+hash, save-btn → review POST,
+// status/notes fields → state) are reattached after outerHTML replace.
+function wireReviewCard(card, event) {
+  const statusSelect = card.querySelector(".review-status");
+  if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
+  const openBtn = card.querySelector(".review-open");
+  if (openBtn) {
+    openBtn.addEventListener("click", () => {
+      setEventOpener(card.dataset.id, openBtn, "events");
+      window.location.hash = "#/events/" + encodeURIComponent(card.dataset.id);
+    });
+  }
+  const saveBtn = card.querySelector(".review-save");
+  if (!saveBtn) return;
+  saveBtn.addEventListener("click", async () => {
+    // ensure inline error container exists
+    let errEl = card.querySelector(".review-save-error");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.className = "error review-save-error";
+      errEl.setAttribute("role", "alert");
+      errEl.hidden = true;
+      card.append(errEl);
+    }
+    errEl.hidden = true;
+    errEl.textContent = "";
+    try {
+      await withLoading(saveBtn, card, async () => {
+        await api(`/api/events/${card.dataset.id}/review`, {
+          method: "POST",
+          body: JSON.stringify({
+            status: card.querySelector(".review-status").value,
+            notes: card.querySelector(".review-notes").value,
+          }),
+        });
+        // Issue #15 round 2 (BL2): pre-PR this only called loadStatus() so
+        // unsaved edits on other cards survived. Replacing the whole list
+        // via loadReviews() would clobber reviewers' in-progress notes
+        // on sibling cards. Targeted: re-fetch THIS event, replace the
+        // saved card's outerHTML in place, refresh global counters.
+        const refreshed = await api(
+          `/api/events?limit=500&review_status=${encodeURIComponent($("#review-filter")?.value || "")}`,
+        ).catch(() => null);
+        const updated = refreshed?.events?.find((e) => e.id === card.dataset.id);
+        if (updated && document.body.contains(card)) {
+          const fresh = document.createElement("div");
+          fresh.innerHTML = reviewCard(updated).trim();
+          const replacement = fresh.firstElementChild;
+          if (replacement) {
+            card.replaceWith(replacement);
+            wireReviewCard(replacement, updated);
+          }
+        }
+        await loadStatus();
+        await loadEventReviewCounts();
+      });
+    } catch (error) {
+      errEl.textContent = error.message;
+      errEl.hidden = false;
+    }
   });
 }
 
@@ -1859,6 +1931,13 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   const drawer = document.getElementById("eventos-drawer");
   if (!drawer || drawer.hidden) return;
+  // Issue #15 round 2 (RISK2): only treat Escape as drawer-close when the
+  // drawer is actually visible. With BL1 fixed (tab-switch closes the
+  // drawer), this is mostly belt-and-braces, but if a future refactor
+  // leaves a stale `hidden=false` drawer behind another view, Escape
+  // should not silently rewrite the hash or call history.back().
+  const openerView = eventOpener && eventOpener.view;
+  if (openerView && typeof eventosViewIsActive === "function" && !eventosViewIsActive(openerView)) return;
   event.preventDefault();
   if (eventOpener && (history.length ?? 1) > 1) {
     history.back();
@@ -1869,7 +1948,6 @@ document.addEventListener("keydown", (event) => {
   if (typeof handleHashRoute === "function") handleHashRoute();
 });
 }
-window.addEventListener("hashchange", handleHashRoute);
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
 }
@@ -1905,6 +1983,11 @@ $("#lang-toggle").addEventListener("click", async () => {
   updateHtmlLang();
   applyTranslations();
   writeLocalPrefs();
+  // Issue #15 round 2 (BL1): language toggle re-renders the active data
+  // view (which can call loadReviews and overwrite in-progress edits on
+  // other cards if the drawer is mid-save). Close the drawer first so
+  // the re-render can't clobber a save-in-flight.
+  if (typeof closeEventDrawer === "function") closeEventDrawer();
   // Re-render the active data view so table rows pick up the new language
   const activeTab = $(".tab.active");
   if (activeTab) {
@@ -1931,6 +2014,15 @@ $$(".tab").forEach((tab) => {
     tab.classList.add("active");
     try { tab.setAttribute("aria-selected", "true"); } catch {}
     $$(".view").forEach((view) => view.classList.remove("active"));
+    // Issue #15 round 2 (BL1): close the investigation drawer whenever a
+    // tab is clicked. closeEventDrawer is a no-op when the drawer is
+    // already hidden, so re-clicking the active events tab (the path
+    // handleHashRoute takes on a deep-link open) doesn't disturb a
+    // drawer that was just opened by a SUBSEQUENT openEventDrawer call.
+    // The real benefit is leaving the events view (e.g. switching to
+    // Monitoramento) — the stale drawer that would otherwise re-appear
+    // on return is gone for good.
+    if (typeof closeEventDrawer === "function") closeEventDrawer();
     const target = $(`#view-${tab.dataset.view}`);
     if (target) {
       target.classList.add("active");
