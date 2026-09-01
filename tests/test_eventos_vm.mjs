@@ -1378,6 +1378,114 @@ check(
   `regex test result=${_regexLenient}`,
 );
 
+console.log("\nScenario 16: PR #15 follow-ups — #24 Escape drawer visibility gate");
+// Issue #24: Escape closes the drawer for case B (Monitoramento map-dot
+// entry) where eventOpener.view = "dashboard". The old guard
+// `!eventosViewIsActive(openerView)` silently bailed because the eventos
+// view is always active while the drawer is open. The new gate uses the
+// drawer's own visibility.
+// Anchor: find the Escape keydown handler and assert its body doesn't gate
+// on eventosViewIsActive. Using a non-greedy match between the
+// addEventListener call and the closing `});` of the keydown handler.
+// Anchor: extract just the Escape handler body (the issue #24 reference
+// inside a comment mentions the OLD function name, so we strip comments).
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+}
+const _escHandlerMatch = stripComments(_appSrc2).match(/document\.addEventListener\("keydown",\s*\(event\)\s*=>\s*\{([\s\S]*?)\}\);/);
+const _escHandlerBody = _escHandlerMatch ? _escHandlerMatch[1] : "";
+check(
+  "(16a/RISK) Escape handler body no longer gates on eventosViewIsActive (case B regression)",
+  _escHandlerBody.length > 0 && !/eventosViewIsActive\(/.test(_escHandlerBody),
+  `expected Escape handler body not to call eventosViewIsActive`,
+);
+check(
+  "(16b) Escape handler closes the drawer via history.replaceState when no history entry",
+  /document\.addEventListener\("keydown"[\s\S]*?history\.replaceState\(null, "", target\)/s.test(_appSrc2),
+  `expected history.replaceState in Escape handler`,
+);
+// Use the stripComments helper from scenario 16a to skip over the
+// descriptive comment that mentions document.body.contains.
+// Anchor on the Escape-specific handler (starts with `event.key !== "Escape"`)
+// rather than any keydown handler, since closeEventDrawer's focus-restore
+// legitimately uses document.body.contains.
+const _escHandlerOnly = stripComments(_appSrc2).match(/if \(event\.key !== "Escape"\)[\s\S]*?if \(typeof handleHashRoute === "function"\) handleHashRoute\(\);[\s\S]*?\}\);/);
+const _escBody = _escHandlerOnly ? _escHandlerOnly[0] : "";
+check(
+  "(16c) Escape handler body does NOT touch eventOpener.focusEl (closeEventDrawer owns focus)",
+  _escBody.length > 0 && !/eventOpener\.focusEl/.test(_escBody),
+  `expected Escape handler body not to touch eventOpener.focusEl (closeEventDrawer handles it)`,
+);
+check(
+  "(16d) wireReviewCard save handler still calls loadStatus() after the card-swap (Opus regression)",
+  /wireReviewCard[\s\S]*?await loadStatus\(\)[\s\S]*?await loadEventReviewCounts/s.test(_appSrc2),
+  `expected both loadStatus() and loadEventReviewCounts() in the wireReviewCard save handler`,
+);
+console.log("\nScenario 17: PR #15 follow-ups — #25 mobile track-panel above drawer");
+// Issue #25: on <1024px viewports, the .eventos-drawer overlay (z-index:10)
+// used to cover the in-flow #event-track-panel. Raise the track panel
+// above the drawer.
+check(
+  "(17a/RISK) #event-track-panel has a z-index > 10 in the @media (max-width:1023px) block",
+  /@media\s*\(\s*max-width:\s*1023px\s*\)\s*\{[\s\S]*?#event-track-panel\s*\{[\s\S]*?z-index:\s*(?:[1-9][0-9]+|[2-9]\d*)/s.test(_componentsSrc) ||
+    /@media\s*\(\s*max-width:\s*1023px\s*\)\s*\{[\s\S]*?#event-track-panel\s*\{[\s\S]*?z-index:\s*20/s.test(_componentsSrc),
+  `expected #event-track-panel z-index above 10 in the mobile media query`,
+);
+check(
+  "(17b) .eventos-drawer still has z-index: 10 in the mobile media query (regression guard)",
+  /@media\s*\(\s*max-width:\s*1023px\s*\)\s*\{[\s\S]*?\.eventos-drawer\s*\{[\s\S]*?z-index:\s*10/s.test(_componentsSrc),
+  `expected .eventos-drawer z-index: 10 unchanged`,
+);
+
+console.log("\nScenario 18: PR #15 follow-ups — #26 dead #event-detail-content write removed");
+// Issue #26: loadEventDetail no longer writes into #event-detail-content
+// Anchor: extract just the loadEventDetail function body (comments outside
+// the function would otherwise mention "container.innerHTML" in issue notes).
+const _loadEventDetailMatch = _appSrc2.match(/async function loadEventDetail[\s\S]*?\n\}\n/);
+const _loadEventDetailBody = _loadEventDetailMatch ? _loadEventDetailMatch[0] : "";
+check(
+  "(18a/NIT) loadEventDetail body no longer writes to container.innerHTML",
+  _loadEventDetailBody.length > 0 && !/container\.innerHTML\s*=/.test(_loadEventDetailBody),
+  `expected loadEventDetail body to not assign container.innerHTML`,
+);
+check(
+  "(18b/NIT) loadEventDetail still calls setupEventTrackPanel (so the test surface stays valid)",
+  /async function loadEventDetail[\s\S]*?setupEventTrackPanel\(event\)/s.test(_appSrc2),
+  `expected setupEventTrackPanel call inside loadEventDetail`,
+);
+check(
+  "(18c/NIT) the dead #view-event-detail <section> in index.html is marked as orphan (issue #26 explains it)",
+  /Issue\s*#\s*26/.test(fs.readFileSync(INDEX_HTML, "utf8")),
+  `expected Issue #26 note in index.html explaining the orphan section`,
+);
+
+console.log("\nScenario 19: PR #15 follow-ups — #27 decodeURIComponent try/catch");
+// Issue #27: malformed percent-encoding in window.location.hash or a dot
+// href would throw an unhandled URIError. Wrap decodeURIComponent in
+// try/catch and fall back to the raw string.
+check(
+  "(19a/NIT) handleHashRoute wraps decodeURIComponent in try/catch",
+  /function handleHashRoute\(\)\s*\{[\s\S]*?try\s*\{\s*rawHash\s*=\s*decodeURIComponent/s.test(_appSrc2),
+  `expected decodeURIComponent wrapped in try/catch in handleHashRoute`,
+);
+check(
+  "(19b/NIT) map-dot click handler wraps decodeURIComponent in try/catch",
+  /\$\("#monitoramento-map"\)[\s\S]*?try\s*\{\s*rawHref\s*=\s*decodeURIComponent/s.test(_appSrc2),
+  `expected decodeURIComponent wrapped in try/catch in the map-dot handler`,
+);
+
+console.log("\nScenario 20: PR #15 follow-ups — #28 wireReviewCard comment accuracy");
+// Issue #28: the inline comment in wireReviewCard's save handler claimed
+// the check ran "after card.replaceWith (line 1558), not before" — but
+// replaceWith is actually at line 1571 (post-#28 edits). The new comment
+// states the ordering correctly and explains that Element.querySelector
+// walks detached subtrees.
+check(
+  "(20a/NIT) wireReviewCard save-handler comment explains the post-replaceWith ordering",
+  /Issue\s*#\s*28[\s\S]*?post-replaceWith[\s\S]*?Element\.querySelector/s.test(_appSrc2),
+  `expected Issue #28 comment explaining post-replaceWith ordering`,
+);
+
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);
   process.exit(1);

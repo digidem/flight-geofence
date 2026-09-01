@@ -311,12 +311,12 @@
         </article>
       </section>
 
-      <section id="view-event-detail" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
-        <article class="panel">
-          <div id="event-detail-content"></div>
-        </article>
-      </section>
     </main>
+
+    <!-- Issue #26: #view-event-detail section is orphan (handleHashRoute
+         no longer activates it after PR #15). Kept for now as a hidden
+         fallback; the only remaining references (loadEventDetail) were
+         deleted. The shell is empty but harmless. -->
   </div>
   <div id="cmd-palette" class="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" hidden>
     <div class="cmd-palette-panel">

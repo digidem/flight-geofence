@@ -872,27 +872,24 @@ function renderEventDetailCard(event) {
       <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
 }
 
+// Issue #26: PR #15 moved the track panel out of the orphaned
+// #view-event-detail section, so loadEventDetail no longer needs to
+// write into #event-detail-content (the element exists but is permanently
+// hidden — handleHashRoute no longer activates #view-event-detail).
+// The meaningful side effect — setupEventTrackPanel(event) — lives in
+// openEventDrawer (hash route) and is re-invoked here so the test
+// surface and any future direct callers still get the same end state.
 async function loadEventDetail(eventId) {
-  const container = $("#event-detail-content");
-  if (!container) return;
-  container.innerHTML = `<p class="muted">Loading…</p>`;
+  const trackPanel = $("#event-track-panel");
   try {
     const result = await api(`/api/events?limit=500`);
     const event = result.events.find((e) => e.id === eventId);
-    if (!event) {
-      const trackPanel = $("#event-track-panel");
-      if (trackPanel) trackPanel.hidden = true;
-      container.innerHTML = `<p class="muted">Event not found.</p>`;
-      return;
-    }
-    container.innerHTML = renderEventDetailCard(event);
-    await setupEventTrackPanel(event);
+    if (event) await setupEventTrackPanel(event);
+    else if (trackPanel) trackPanel.hidden = true;
   } catch (error) {
-    container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
+    if (trackPanel) trackPanel.hidden = true;
   }
 }
-
-
 const TRACK_BLOCKED_KEYS = {
   missing_fr24_id: "fr24_track_blocked_missing",
   already_fetched: "fr24_track_blocked_fetched",
@@ -1133,8 +1130,12 @@ async function openEventDrawer(eventId) {
   await setupEventTrackPanel(event);
 }
 function handleHashRoute() {
-  const hash = window.location.hash || "";
-  const match = decodeURIComponent(window.location.hash).match(/^#\/events\/([\w-]+)$/);
+  // Issue #27 (Opus NIT): wrap decodeURIComponent in try/catch so a
+  // user-crafted hash with malformed percent-encoding (e.g. `#/events/foo%XY`)
+  // doesn't throw an unhandled URIError. Fall back to the raw hash.
+  let rawHash = window.location.hash || "";
+  try { rawHash = decodeURIComponent(rawHash); } catch (_) { /* keep raw hash */ }
+  const match = rawHash.match(/^#\/events\/([\w-]+)$/);
   const drawer = $("#eventos-drawer");
   if (match) {
     const tab = $("#tab-events");
@@ -1569,6 +1570,14 @@ function wireReviewCard(card, event) {
           if (replacement) {
             card.replaceWith(replacement);
             wireReviewCard(replacement, updated);
+            // Issue #28: clarify the post-replaceWith ordering. The check
+            // below runs AFTER card.replaceWith (line 1571) on purpose —
+            // `card` is now detached, but Element.querySelector still
+            // walks its child subtree, so card.querySelector(".review-open")
+            // correctly resolves the OLD button. We compare against the
+            // opener's stored focusEl to decide whether to repoint it at
+            // the replacement button, so closeEventDrawer's focus
+            // restoration lands on the new Abrir evento button.
             // Issue #15 round 3 (RISK): if the open drawer's opener points
             // at the card we just replaced, refresh its focusEl so
             // closeEventDrawer's focus-restoration still lands on the
@@ -1578,6 +1587,11 @@ function wireReviewCard(card, event) {
             }
           }
         }
+        // the global metrics tile (#phase-badge, #metrics including the
+        // Monitoramento "N revisados" count derived from
+        // status.events.review.useful). loadEventReviewCounts() only writes
+        // #eventos-status-chips. Both must run so the Monitoramento tile
+        // stays in sync with the saved review disposition.
         await loadStatus();
         await loadEventReviewCounts();
       });
@@ -1955,13 +1969,16 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   const drawer = document.getElementById("eventos-drawer");
   if (!drawer || drawer.hidden) return;
-  // Issue #15 round 2 (RISK2): only treat Escape as drawer-close when the
-  // drawer is actually visible. With BL1 fixed (tab-switch closes the
-  // drawer), this is mostly belt-and-braces, but if a future refactor
-  // leaves a stale `hidden=false` drawer behind another view, Escape
-  // should not silently rewrite the hash or call history.back().
-  const openerView = eventOpener && eventOpener.view;
-  if (openerView && typeof eventosViewIsActive === "function" && !eventosViewIsActive(openerView)) return;
+  // Issue #24: gate Escape on the drawer's own visibility, NOT the opener's
+  // view. The previous guard checked `eventosViewIsActive(openerView)` which
+  // silently bailed for case B (Monitoramento map-dot entry): the opener's
+  // view is "dashboard" because the dot lives inside #view-dashboard, but
+  // the eventos view is always active while the drawer is open, so the
+  // drawer would never close via Escape for that entry path.
+  // Close via history.back when there's a previous entry; otherwise rewrite
+  // the hash to drop the events/ fragment and re-run the router. Focus
+  // restoration is the responsibility of closeEventDrawer (it tracks
+  // eventOpener internally), so this handler doesn't need to restore focus.
   event.preventDefault();
   if (eventOpener && (history.length ?? 1) > 1) {
     history.back();
@@ -2107,7 +2124,12 @@ $$(".tab").forEach((tab) => {
 $("#monitoramento-map")?.addEventListener("click", (event) => {
   const dot = event.target.closest && event.target.closest("a.event-dot");
   if (!dot) return;
-  const match = decodeURIComponent(dot.getAttribute("href") || "").match(/^#\/events\/([\w-]+)$/);
+  // Issue #27 (Opus NIT): wrap decodeURIComponent in try/catch so a
+  // dot href with malformed percent-encoding doesn't throw an
+  // unhandled URIError. Fall back to the raw href.
+  let rawHref = dot.getAttribute("href") || "";
+  try { rawHref = decodeURIComponent(rawHref); } catch (_) { /* keep raw href */ }
+  const match = rawHref.match(/^#\/events\/([\w-]+)$/);
   if (!match) return;
   // Issue #15 round 4 (RISK 2): the dot lives inside #view-dashboard,
   // which is display:none while the events view is active. The round-3
@@ -2356,6 +2378,12 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       method: "POST",
       body: JSON.stringify({ confirm: true }),
     });
+    // Issue #26: loadEventDetail no longer writes into #event-detail-content
+    // (the element is orphaned — handleHashRoute never activates
+    // #view-event-detail after PR #15). The meaningful side effect is
+    // setupEventTrackPanel(event), which re-derives the button + cost from
+    // the latest /api/events state. Keep the call so the test surface and
+    // any direct callers still refresh.
     if (panel.dataset.eventId !== requestedEventId) return;
     await loadEventDetail(requestedEventId);
     if (panel.dataset.eventId !== requestedEventId) {
@@ -2573,3 +2601,4 @@ init().catch((error) => {
   $("#login-error").textContent = error.message;
   showLogin();
 });
+

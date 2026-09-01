@@ -909,6 +909,17 @@ label.check.area-label {
     box-shadow: 0 -8px 16px var(--shadow);
   }
 }
+@media (max-width: 1023px) {
+  /* Issue #25: on mobile the .eventos-drawer overlay (z-index: 10,
+     bottom-fixed) used to cover the in-flow #event-track-panel,
+     making it unclickable / partially hidden for short event lists.
+     Raise the track panel above the drawer so the FR24 track action
+     stays reachable when the drawer is open. */
+  #event-track-panel {
+    position: relative;
+    z-index: 20;
+  }
+}
 @media (max-width: 599px) {
   .eventos-drawer {
     max-height: 100vh;
