@@ -853,6 +853,7 @@ label.check.area-label {
 .eventos-status-chip.active {
   background: var(--burgundy);
   color: var(--paper);
+}
 .eventos-body {
   display: grid;
   gap: 16px;

@@ -2131,6 +2131,15 @@ $("#monitoramento-fr24-details")?.addEventListener("click", (event) => {
   const tab = $("#tab-fr24");
   if (tab) tab.click();
 });
+$("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
+$("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
+$("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
+$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#view-dashboard"), loadMonitoramento));
+$("#area-filter").addEventListener("click", (event) => {
+  appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
+  appState.areasOffset = 0;
+  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+});
 const debouncedAreaSearch = debounce(() => {
   try {
     const val = $("#area-search") ? $("#area-search").value : "";

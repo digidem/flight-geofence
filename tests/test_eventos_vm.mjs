@@ -1318,6 +1318,38 @@ check(
   /openEventDrawer[\s\S]*?cardEl\.replaceWith[\s\S]*?eventOpener\.focusEl\s*=\s*replacement\.querySelector/s.test(_appSrc2),
   `expected eventOpener.focusEl = replacement.querySelector(...) inside openEventDrawer's save handler`,
 );
+console.log("\nScenario 14: round-5 Sonnet review fixes");
+const COMPONENTS_CSS = path.join(ROOT, "app", "static", "components.css");
+const _componentsSrc = fs.readFileSync(COMPONENTS_CSS, "utf8");
+const _braceBalance = (() => {
+  let c = 0;
+  for (let i = 0; i < _componentsSrc.length; i++) {
+    const ch = _componentsSrc[i];
+    if (ch === "{") c++;
+    else if (ch === "}") c--;
+  }
+  return c;
+})();
+check(
+  "(14a/BLOCKER1) components.css has balanced braces (unbalanced braces silently break trailing CSS rules in nesting-aware browsers)",
+  _braceBalance === 0,
+  `brace balance=${_braceBalance}`,
+);
+check(
+  "(14b/BLOCKER1) .eventos-status-chip.active has its closing brace before .eventos-body opens (the rule that broke the whole Eventos CSS block in round 4)",
+  /\.eventos-status-chip\.active\s*\{[^}]*\}\s*\.eventos-body\s*\{/.test(_componentsSrc),
+  `expected '.eventos-status-chip.active { ... } .eventos-body { ... }' pattern`,
+);
+check(
+  "(14c/BLOCKER1) .eventos-drawer has its own rule block (was nested under .eventos-status-chip.active in round 4)",
+  /\.eventos-drawer\s*\{/.test(_componentsSrc),
+  `expected '.eventos-drawer { ... }' rule`,
+);
+check(
+  "(14d/RISK3) desktop grid-column: 2 fix is in place for the drawer and track panel (round-4 RISK 3)",
+  /#eventos-drawer,\s*#event-track-panel\s*\{[\s\S]*?grid-column:\s*2/.test(_componentsSrc),
+  `expected 'grid-column: 2' on #eventos-drawer and #event-track-panel`,
+);
 
 if (failures > 0) {
   console.error(`\nSCENARIO FAILED: ${failures} check(s)`);
