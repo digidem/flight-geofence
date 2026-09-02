@@ -1032,7 +1032,13 @@ async function openEventDrawer(eventId) {
   // detached it and broke the FR24 track-fetch flow. The panel now
   // lives next to the drawer (in index.html), so a plain innerHTML
   // rewrite of the drawer no longer affects it.
-  drawer.innerHTML = renderEventDetailCard(event) + reviewForm;
+  // Issue #31: render a close button as the first child of the drawer so
+  // touch users (no physical Escape key) have a way to close it. Mouse
+  // users on desktop also get the consistent affordance. The button
+  // calls closeEventDrawer() — which restores focus to the opener via
+  // the existing focusEl logic, so the behavior matches Escape.
+  const closeButton = `<button type="button" class="eventos-drawer-close" aria-label="${escapeHtml(t("eventos_close_aria"))}">&times;</button>`;
+  drawer.innerHTML = closeButton + renderEventDetailCard(event) + reviewForm;
   const statusSelect = drawer.querySelector(".review-status");
   if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
   drawer.hidden = false;
@@ -1125,6 +1131,17 @@ async function openEventDrawer(eventId) {
           errEl.hidden = false;
         }
       }
+    });
+  }
+  // Issue #31: wire the close button to call closeEventDrawer(). This
+  // reuses the same focus-restoration logic that the Escape handler
+  // and hashchange router use, so all three close paths behave the
+  // same. The button is hidden when the drawer is hidden, so a stale
+  // listener (e.g. on a re-rendered drawer) never fires.
+  const closeBtn = drawer.querySelector(".eventos-drawer-close");
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      if (typeof closeEventDrawer === "function") closeEventDrawer();
     });
   }
   await setupEventTrackPanel(event);
