@@ -108,11 +108,27 @@
         </article>
       </section>
       <section id="view-events" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
-        <article class="panel">
-          <div class="panel-header"><div><p class="eyebrow" data-i18n="review_subtitle">Evidência de calibração</p><h2 data-i18n="review_title">Revisar eventos detectados</h2></div><div class="filters"><select id="review-filter"><option value="" data-i18n="review_all">Todas as revisões</option><option value="unreviewed" data-i18n="review_unreviewed">Não revisados</option><option value="useful" data-i18n="review_useful">Úteis</option><option value="noise" data-i18n="review_noise">Ruído</option><option value="uncertain" data-i18n="review_uncertain">Incertos</option></select><button id="review-refresh" class="button secondary" data-i18n="review_refresh">Atualizar</button></div></div>
-          <div id="review-list" class="review-list"></div>
-          <div class="actions" aria-label="Reviews pagination"><button id="review-prev" class="button ghost dark" data-i18n="review_prev" aria-label="Previous page">Anterior</button><button id="review-next" class="button ghost dark" data-i18n="review_next" aria-label="Next page">Próxima</button><span id="review-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
-        </article>
+        <div class="eventos-shell">
+          <div class="eventos-toolbar">
+            <h2 id="eventos-title" data-i18n="eventos_title">Eventos</h2>
+            <p class="muted" data-i18n="eventos_needs_review">Precisa revisar</p>
+            <label><span data-i18n="col_review">Filtro</span><select id="review-filter"><option value="" data-i18n="review_all">Todas as revisões</option><option value="unreviewed" data-i18n="review_unreviewed">Não revisados</option><option value="useful" data-i18n="review_useful">Úteis</option><option value="noise" data-i18n="review_noise">Ruído</option><option value="uncertain" data-i18n="review_uncertain">Incertos</option></select></label>
+            <div id="eventos-status-chips" class="eventos-status-chips"></div>
+            <button id="review-refresh" class="button ghost dark" type="button" data-i18n="monitoramento_refresh">Atualizar</button>
+          </div>
+          <div class="eventos-body">
+            <div class="eventos-list">
+              <div id="review-list" class="review-list"></div>
+              <div class="actions" aria-label="Reviews pagination"><button id="review-prev" class="button ghost dark" data-i18n="review_prev" aria-label="Previous page">Anterior</button><button id="review-next" class="button ghost dark" data-i18n="review_next" aria-label="Next page">Próxima</button><span id="review-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
+            </div>
+            <aside id="eventos-drawer" class="eventos-drawer" role="region" aria-label="Event investigation" data-i18n-aria="eventos_drawer_aria" hidden></aside>
+            <div id="event-track-panel" class="actions" hidden>
+              <p id="event-track-cost" class="muted"></p>
+              <button id="event-track-fetch" class="button secondary" data-i18n="fr24_track_button" hidden>Buscar rastreamento do voo</button>
+              <div id="event-track-result" class="muted" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="view-settings" class="view" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
@@ -295,17 +311,12 @@
         </article>
       </section>
 
-      <section id="view-event-detail" class="view" role="tabpanel" aria-labelledby="tab-events" tabindex="0">
-        <article class="panel">
-          <div id="event-detail-content"></div>
-          <div id="event-track-panel" class="actions" hidden>
-            <p id="event-track-cost" class="muted"></p>
-            <button id="event-track-fetch" class="button secondary" data-i18n="fr24_track_button" hidden>Buscar rastreamento do voo</button>
-            <div id="event-track-result" class="muted" role="status" aria-live="polite"></div>
-          </div>
-        </article>
-      </section>
     </main>
+
+    <!-- Issue #26: #view-event-detail section is orphan (handleHashRoute
+         no longer activates it after PR #15). Kept for now as a hidden
+         fallback; the only remaining references (loadEventDetail) were
+         deleted. The shell is empty but harmless. -->
   </div>
   <div id="cmd-palette" class="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette" hidden>
     <div class="cmd-palette-panel">

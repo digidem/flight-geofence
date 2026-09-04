@@ -834,61 +834,62 @@ function eventRow(event) {
   </tr>`;
 }
 
+// Issue #15: extracted detail-card renderer.
+function renderEventDetailCard(event) {
+  const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
+  const regLinks = registrationLinks(event.registration);
+  const csLinks = callsignLinks(event.callsign);
+  const posLinks = positionLinks(event.latitude, event.longitude);
+  const details = event.details || {};
+  const providerLks = providerLinks(event.provider);
+
+  const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
+
+  const rows = [
+    `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
+    `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
+    `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
+  ];
+  if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
+  if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
+  if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
+  if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
+  if (event.latitude != null && event.longitude != null) {
+    const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
+    rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
+  }
+  if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
+  if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
+  if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
+  if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
+  if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
+  if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
+  rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
+  rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
+
+  return `<h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
+      <dl class="detail-grid">${rows.join("")}</dl>
+      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
+}
+
+// Issue #26: PR #15 moved the track panel out of the orphaned
+// #view-event-detail section, so loadEventDetail no longer needs to
+// write into #event-detail-content (the element exists but is permanently
+// hidden — handleHashRoute no longer activates #view-event-detail).
+// The meaningful side effect — setupEventTrackPanel(event) — lives in
+// openEventDrawer (hash route) and is re-invoked here so the test
+// surface and any future direct callers still get the same end state.
 async function loadEventDetail(eventId) {
-  const container = $("#event-detail-content");
-  if (!container) return;
-  container.innerHTML = `<p class="muted">Loading…</p>`;
+  const trackPanel = $("#event-track-panel");
   try {
     const result = await api(`/api/events?limit=500`);
     const event = result.events.find((e) => e.id === eventId);
-    if (!event) {
-      const trackPanel = $("#event-track-panel");
-      if (trackPanel) trackPanel.hidden = true;
-      container.innerHTML = `<p class="muted">Event not found.</p>`;
-      return;
-    }
-    const hexLinks = aircraftHexLinks(event.aircraft_hex, event.provider, event.occurred_at, event.registration);
-    const regLinks = registrationLinks(event.registration);
-    const csLinks = callsignLinks(event.callsign);
-    const posLinks = positionLinks(event.latitude, event.longitude);
-    const details = event.details || {};
-    const providerLks = providerLinks(event.provider);
-
-    const linkList = (links) => links.map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="link-forest">${escapeHtml(l.label)}</a>`).join(" · ");
-
-    const rows = [
-      `<dt>${t("email_event")}</dt><dd><strong>${escapeHtml(eventLabel(event.event_type))}</strong></dd>`,
-      `<dt>${t("email_time")}</dt><dd>${escapeHtml(formatTime(event.occurred_at))}</dd>`,
-      `<dt>${t("email_aircraft")}</dt><dd><strong>${escapeHtml(event.aircraft_hex.toUpperCase())}</strong>${hexLinks.length ? " — " + linkList(hexLinks) : ""}</dd>`,
-    ];
-    if (event.callsign) rows.push(`<dt>${t("email_callsign")}</dt><dd>${escapeHtml(event.callsign)}${csLinks.length ? " — " + linkList(csLinks) : ""}</dd>`);
-    if (event.registration) rows.push(`<dt>${t("email_registration")}</dt><dd>${escapeHtml(event.registration)}${regLinks.length ? " — " + linkList(regLinks) : ""}</dd>`);
-    if (event.aircraft_type) rows.push(`<dt>${t("email_aircraft_type")}</dt><dd>${escapeHtml(event.aircraft_type)}</dd>`);
-    if (event.area_names.length) rows.push(`<dt>${t("email_protected_areas")}</dt><dd>${event.area_names.map(escapeHtml).join(", ")}</dd>`);
-    if (event.latitude != null && event.longitude != null) {
-      const latF = parseFloat(event.latitude), lngF = parseFloat(event.longitude);
-      rows.push(`<dt>${t("email_last_position")}</dt><dd>${escapeHtml(latF.toFixed(6))}, ${escapeHtml(lngF.toFixed(6))}${posLinks.length ? " — " + linkList(posLinks) : ""}</dd>`);
-    }
-    if (event.altitude_ft != null) rows.push(`<dt>${t("email_altitude")}</dt><dd>${escapeHtml(String(event.altitude_ft))} ft MSL</dd>`);
-    if (event.ground_speed_kt != null) rows.push(`<dt>${t("email_ground_speed")}</dt><dd>${escapeHtml(String(event.ground_speed_kt))} kt</dd>`);
-    if (event.provider) rows.push(`<dt>${t("email_provider")}</dt><dd>${escapeHtml(event.provider)}${providerLks.length ? " — " + linkList(providerLks) : ""}</dd>`);
-    if (details.source_type) rows.push(`<dt>${t("email_source_type")}</dt><dd>${escapeHtml(details.source_type)}</dd>`);
-    if (details.origin) rows.push(`<dt>${t("email_origin")}</dt><dd>${escapeHtml(details.origin)}</dd>`);
-    if (details.destination) rows.push(`<dt>${t("email_destination")}</dt><dd>${escapeHtml(details.destination)}</dd>`);
-    rows.push(`<dt>${t("email_reason")}</dt><dd>${escapeHtml(event.reason)}</dd>`);
-    rows.push(`<dt>${t("email_classification")}</dt><dd>${escapeHtml(translateClassification(event.airline_classification))}</dd>`);
-
-    container.innerHTML = `
-      <h3>${escapeHtml(eventLabel(event.event_type))} — ${escapeHtml(event.aircraft_hex.toUpperCase())}</h3>
-      <dl class="detail-grid">${rows.join("")}</dl>
-      <p class="detail-back"><a href="/">&larr; Back to dashboard</a></p>`;
-    await setupEventTrackPanel(event);
+    if (event) await setupEventTrackPanel(event);
+    else if (trackPanel) trackPanel.hidden = true;
   } catch (error) {
-    container.innerHTML = `<p class="muted">Error loading event: ${escapeHtml(error.message)}</p>`;
+    if (trackPanel) trackPanel.hidden = true;
   }
 }
-
-
 const TRACK_BLOCKED_KEYS = {
   missing_fr24_id: "fr24_track_blocked_missing",
   already_fetched: "fr24_track_blocked_fetched",
@@ -937,19 +938,213 @@ async function setupEventTrackPanel(event) {
   button.disabled = false;
 }
 
-function handleHashRoute() {
-  const hash = window.location.hash || "";
-  const match = hash.match(/^#\/events\/([a-f0-9-]+)$/i);
-  if (match) {
-    $$(".tab").forEach((t) => { t.classList.remove("active"); try { t.setAttribute("aria-selected", "false"); } catch {} });
-    $$(".view").forEach((v) => v.classList.remove("active"));
-    const detailView = $("#view-event-detail");
-    if (detailView) {
-      detailView.classList.add("active");
-      loadEventDetail(match[1]);
-      try { detailView.setAttribute("tabindex", "-1"); detailView.focus(); } catch {}
-    }
+// ---- Eventos review queue + investigation drawer (issue #15) ------------
+let eventOpener = null;
+function setEventOpener(id, focusEl, view) {
+  eventOpener = { id, focusEl, view };
+}
+function clearEventOpener() {
+  eventOpener = null;
+}
+function closeEventDrawer() {
+  const drawer = $("#eventos-drawer");
+  if (!drawer || drawer.hidden) return;
+  drawer.hidden = true;
+  drawer.innerHTML = "";
+  if (
+    eventOpener &&
+    eventOpener.focusEl &&
+    document.body.contains(eventOpener.focusEl) &&
+    eventosViewIsActive(eventOpener.view)
+  ) {
+    try { eventOpener.focusEl.focus(); } catch {}
   }
+  clearEventOpener();
+}
+function eventosViewIsActive(view) {
+  if (view === "events") return !!($("#view-events")?.classList.contains("active"));
+  if (view === "dashboard") return !!($("#view-dashboard")?.classList.contains("active"));
+  return false;
+}
+
+async function loadEventReviewCounts() {
+  const container = $("#eventos-status-chips");
+  if (!container) return;
+  const status = await api("/api/status").catch(() => null);
+  const counts = status?.events?.review || {};
+  const order = ["unreviewed", "useful", "noise", "uncertain"];
+  container.innerHTML = order
+    .map((k) => {
+      const count = counts[k] ?? 0;
+      return `<button class="button ghost dark eventos-status-chip" data-status="${k}" data-count="${count}" type="button">${escapeHtml(t("review_" + k))} <strong>${count}</strong></button>`;
+    })
+    .join("");
+  const active = ($("#review-filter")?.value) || "";
+  document.querySelectorAll(".eventos-status-chip").forEach((btn) => {
+    if (btn.dataset.status === active) btn.classList.add("active");
+    btn.addEventListener("click", () => {
+      const select = $("#review-filter");
+      if (select) select.value = btn.dataset.status || "";
+      appState.reviewsOffset = 0;
+      Promise.all([loadReviews(), loadEventReviewCounts()]).catch(() => {});
+    });
+  });
+}
+// Monotonic counter for openEventDrawer calls (issue #15 round 2 RISK1):
+// lets a later open() invalidate any earlier in-flight open's results
+// so a slow A response can't overwrite a fast B already on screen.
+let _openEventDrawerSeq = 0;
+
+async function openEventDrawer(eventId) {
+  const drawer = $("#eventos-drawer");
+  if (!drawer) return;
+  const seq = ++_openEventDrawerSeq;
+  let event = null;
+  try {
+    const result = await api(`/api/events?limit=500`);
+    if (seq !== _openEventDrawerSeq) return; // a newer open() has superseded us
+    event = result.events.find((e) => e.id === eventId);
+  } catch { /* fall through */ }
+  if (seq !== _openEventDrawerSeq) return; // superseded while we awaited
+  if (!event) {
+    // Distinguish "event not found / fetch failed" from "queue is empty":
+    // the latter should not appear here because handleHashRoute only fires
+    // for a specific #/events/{id} deep link. Surface a precise diagnostic
+    // so a stale link, bad id, or genuine network error is not hidden
+    // behind the queue-empty copy.
+    drawer.innerHTML = `<p class="muted">${escapeHtml(t("review_event_not_found"))}</p>`;
+    drawer.hidden = false;
+    return;
+  }
+  const reviewForm = `
+    <h3 class="review-actions-title" data-i18n="eventos_classification_actions">Ações de classificação</h3>
+    <label class="review-form-label">${t("col_review")}<select class="review-status">
+      <option value="unreviewed">${t("review_unreviewed")}</option>
+      <option value="useful">${t("review_useful")}</option>
+      <option value="noise">${t("review_noise")}</option>
+      <option value="uncertain">${t("review_uncertain")}</option>
+    </select></label>
+    <label class="review-form-label">${t("review_notes")}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
+    <button class="button secondary review-save" data-event-id="${escapeHtml(event.id)}" type="button">${t("review_save")}</button>
+  `;
+  // Issue #15 round 3 (BLOCKER): the #event-track-panel used to be
+  // nested inside #eventos-drawer, so re-rendering drawer.innerHTML
+  // detached it and broke the FR24 track-fetch flow. The panel now
+  // lives next to the drawer (in index.html), so a plain innerHTML
+  // rewrite of the drawer no longer affects it.
+  drawer.innerHTML = renderEventDetailCard(event) + reviewForm;
+  const statusSelect = drawer.querySelector(".review-status");
+  if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
+  drawer.hidden = false;
+  drawer.setAttribute("tabindex", "-1");
+  try { drawer.focus({ preventScroll: true }); } catch {}
+  if (eventOpener && eventOpener.id === eventId && eventosViewIsActive("events")) {
+    const card = $$(".review-card").find((c) => c.dataset.id === eventId);
+    const btn = card?.querySelector(".review-open");
+    if (btn) eventOpener.focusEl = btn;
+  }
+  const saveBtn = drawer.querySelector(".review-save");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      const reviewId = saveBtn.dataset.eventId || event.id;
+      const statusField = drawer.querySelector(".review-status");
+      const notesField = drawer.querySelector(".review-notes");
+      // Issue #15 round 2 (RISK4): capture errEl up-front so the catch
+      // below can still surface the failure even if the drawer is
+      // closed and re-opened for a different event while the save is
+      // in flight. A fresh DOM node is appended to the CURRENT drawer
+      // (the one with the save button the user clicked), not queried
+      // after the await, which could find a stale node from a
+      // previous event's render.
+      let errEl = drawer.querySelector(".review-save-error");
+      if (!errEl) {
+        errEl = document.createElement("div");
+        errEl.className = "error review-save-error";
+        errEl.setAttribute("role", "alert");
+        errEl.hidden = true;
+        drawer.append(errEl);
+      }
+      errEl.hidden = true;
+      errEl.textContent = "";
+      // After the save, find the matching review-card (if the queue
+      // is visible) and refresh just that card instead of the whole
+      // list (BL2 mirror of the card-side fix). This protects any
+      // unsaved edits the reviewer may have started on a sibling card.
+      const cardEl = $$(`.review-card[data-id="${reviewId}"]`)[0] || null;
+      try {
+        await withLoading(saveBtn, drawer, async () => {
+          await api(`/api/events/${encodeURIComponent(reviewId)}/review`, {
+            method: "POST",
+            body: JSON.stringify({
+              status: statusField ? statusField.value : "unreviewed",
+              notes: notesField ? notesField.value : "",
+            }),
+          });
+          if (cardEl && document.body.contains(cardEl)) {
+            const refreshed = await api(
+              `/api/events?limit=500&review_status=${encodeURIComponent($("#review-filter")?.value || "")}`,
+            ).catch(() => null);
+            const updated = refreshed?.events?.find((e) => e.id === reviewId);
+            if (updated) {
+              const fresh = document.createElement("div");
+              fresh.innerHTML = reviewCard(updated).trim();
+              const replacement = fresh.firstElementChild;
+              if (replacement) {
+                cardEl.replaceWith(replacement);
+                wireReviewCard(replacement, updated);
+                // Issue #15 round 4 (RISK 1): mirror the card-side fix
+                // for the drawer-side save path. If the open drawer's
+                // opener pointed at the card we just replaced,
+                // refresh its focusEl so closeEventDrawer's focus
+                // restoration lands on the new (replacement) button.
+                if (
+                  eventOpener &&
+                  eventOpener.id === updated.id &&
+                  cardEl.querySelector &&
+                  eventOpener.focusEl === cardEl.querySelector(".review-open")
+                ) {
+                  eventOpener.focusEl = replacement.querySelector(".review-open");
+                }
+              }
+            }
+            // Fallback: no card visible (deep-link entry), just refresh counters.
+            await loadStatus();
+            await loadEventReviewCounts();
+          }
+        });
+      } catch (error) {
+        // in the DOM (and not hidden by closeEventDrawer), this surfaces
+        // errEl was captured before the await. If the drawer was closed
+        // mid-save, errEl is detached from the DOM but still exists in
+        // memory; assigning to textContent is harmless. The visible
+        // result is correct: the errEl isn't shown because it's not
+        // attached, but if the drawer is re-opened the errEl isn't
+        // reused (a new one is created on the next save click).
+        if (errEl) {
+          errEl.textContent = error.message;
+          errEl.hidden = false;
+        }
+      }
+    });
+  }
+  await setupEventTrackPanel(event);
+}
+function handleHashRoute() {
+  // Issue #27 (Opus NIT): wrap decodeURIComponent in try/catch so a
+  // user-crafted hash with malformed percent-encoding (e.g. `#/events/foo%XY`)
+  // doesn't throw an unhandled URIError. Fall back to the raw hash.
+  let rawHash = window.location.hash || "";
+  try { rawHash = decodeURIComponent(rawHash); } catch (_) { /* keep raw hash */ }
+  const match = rawHash.match(/^#\/events\/([\w-]+)$/);
+  const drawer = $("#eventos-drawer");
+  if (match) {
+    const tab = $("#tab-events");
+    if (tab) tab.click();
+    loadEventReviewCounts().catch(() => {});
+    openEventDrawer(match[1]).catch(() => {});
+    return;
+  }
+  if (drawer && !drawer.hidden) closeEventDrawer();
 }
 async function loadStatus() {
   // Lightweight global status loader (issue #14): keeps phase / version /
@@ -975,7 +1170,6 @@ async function loadStatus() {
     return status;
   });
 }
-
 // ---- Monitoramento (issue #14) -------------------------------------------
 // Orchestrator + renderers for the redesigned dashboard surface.
 // `loadMonitoramento()` composes loadStatus() with the events, FR24 status,
@@ -1279,6 +1473,7 @@ function reviewCard(event) {
     : "—";
   return `<article class="review-card" data-id="${escapeHtml(event.id)}">
     <div><strong>${eventLabel(event.event_type)} · ${hexDisplay}</strong> · ${regDisplay}<p>${escapeHtml(event.reason)}</p><p class="muted">${event.area_names.map(escapeHtml).join(", ")} · ${escapeHtml(formatTime(event.occurred_at))}</p></div>
+    <button class="button ghost dark review-open" type="button" data-i18n="eventos_open_action">${t("eventos_open_action")}</button>
     <label>${t("col_review")}<select class="review-status"><option value="unreviewed">${t("review_unreviewed")}</option><option value="useful">${t("review_useful")}</option><option value="noise">${t("review_noise")}</option><option value="uncertain">${t("review_uncertain")}</option></select></label>
     <label>${t('review_notes')}<textarea class="review-notes" maxlength="4000">${escapeHtml(event.review_notes || "")}</textarea></label>
     <button class="button secondary review-save">${t("review_save")}</button>
@@ -1317,37 +1512,93 @@ async function loadReviews() {
       ? events.map(reviewCard).join("")
       : `<p class="muted">${t("review_no_events")}</p>`;
   $$(".review-card").forEach((card, index) => {
-    card.querySelector(".review-status").value = events[index].review_status;
-    const saveBtn = card.querySelector(".review-save");
-    saveBtn.addEventListener("click", async () => {
-      // ensure inline error container exists
-      let errEl = card.querySelector(".review-save-error");
-      if (!errEl) {
-        errEl = document.createElement("div");
-        errEl.className = "error review-save-error";
-        errEl.setAttribute("role", "alert");
-        errEl.hidden = true;
-        card.append(errEl);
-      }
-      errEl.hidden = true;
-      errEl.textContent = "";
-      try {
-        await withLoading(saveBtn, card, async () => {
-          await api(`/api/events/${card.dataset.id}/review`, {
-            method: "POST",
-            body: JSON.stringify({
-              status: card.querySelector(".review-status").value,
-              notes: card.querySelector(".review-notes").value,
-            }),
-          });
-          await loadStatus();
-        });
-      } catch (error) {
-        errEl.textContent = error.message;
-        errEl.hidden = false;
-      }
-      });
+    wireReviewCard(card, events[index]);
   });
+  });
+}
+
+// Per-card wiring (issue #15 round 2 BL2 refactor): shared between the
+// initial render and the post-save in-place refresh so a saved card's
+// listeners (open-btn → setEventOpener+hash, save-btn → review POST,
+// status/notes fields → state) are reattached after outerHTML replace.
+function wireReviewCard(card, event) {
+  const statusSelect = card.querySelector(".review-status");
+  if (statusSelect) statusSelect.value = event.review_status || "unreviewed";
+  const openBtn = card.querySelector(".review-open");
+  if (openBtn) {
+    openBtn.addEventListener("click", () => {
+      setEventOpener(card.dataset.id, openBtn, "events");
+      window.location.hash = "#/events/" + encodeURIComponent(card.dataset.id);
+    });
+  }
+  const saveBtn = card.querySelector(".review-save");
+  if (!saveBtn) return;
+  saveBtn.addEventListener("click", async () => {
+    // ensure inline error container exists
+    let errEl = card.querySelector(".review-save-error");
+    if (!errEl) {
+      errEl = document.createElement("div");
+      errEl.className = "error review-save-error";
+      errEl.setAttribute("role", "alert");
+      errEl.hidden = true;
+      card.append(errEl);
+    }
+    errEl.hidden = true;
+    errEl.textContent = "";
+    try {
+      await withLoading(saveBtn, card, async () => {
+        await api(`/api/events/${card.dataset.id}/review`, {
+          method: "POST",
+          body: JSON.stringify({
+            status: card.querySelector(".review-status").value,
+            notes: card.querySelector(".review-notes").value,
+          }),
+        });
+        // Issue #15 round 2 (BL2): pre-PR this only called loadStatus() so
+        // unsaved edits on other cards survived. Replacing the whole list
+        // via loadReviews() would clobber reviewers' in-progress notes
+        // on sibling cards. Targeted: re-fetch THIS event, replace the
+        // saved card's outerHTML in place, refresh global counters.
+        const refreshed = await api(
+          `/api/events?limit=500&review_status=${encodeURIComponent($("#review-filter")?.value || "")}`,
+        ).catch(() => null);
+        const updated = refreshed?.events?.find((e) => e.id === card.dataset.id);
+        if (updated && document.body.contains(card)) {
+          const fresh = document.createElement("div");
+          fresh.innerHTML = reviewCard(updated).trim();
+          const replacement = fresh.firstElementChild;
+          if (replacement) {
+            card.replaceWith(replacement);
+            wireReviewCard(replacement, updated);
+            // Issue #28: clarify the post-replaceWith ordering. The check
+            // below runs AFTER card.replaceWith (line 1571) on purpose —
+            // `card` is now detached, but Element.querySelector still
+            // walks its child subtree, so card.querySelector(".review-open")
+            // correctly resolves the OLD button. We compare against the
+            // opener's stored focusEl to decide whether to repoint it at
+            // the replacement button, so closeEventDrawer's focus
+            // restoration lands on the new Abrir evento button.
+            // Issue #15 round 3 (RISK): if the open drawer's opener points
+            // at the card we just replaced, refresh its focusEl so
+            // closeEventDrawer's focus-restoration still lands on the
+            // new (replacement) Abrir evento button.
+            if (eventOpener && eventOpener.id === updated.id && eventOpener.focusEl === card.querySelector(".review-open")) {
+              eventOpener.focusEl = replacement.querySelector(".review-open");
+            }
+          }
+        }
+        // the global metrics tile (#phase-badge, #metrics including the
+        // Monitoramento "N revisados" count derived from
+        // status.events.review.useful). loadEventReviewCounts() only writes
+        // #eventos-status-chips. Both must run so the Monitoramento tile
+        // stays in sync with the saved review disposition.
+        await loadStatus();
+        await loadEventReviewCounts();
+      });
+    } catch (error) {
+      errEl.textContent = error.message;
+      errEl.hidden = false;
+    }
   });
 }
 
@@ -1713,7 +1964,40 @@ async function init() {
   try { initSettingsStepper(); } catch {}
   try { initHelpToggles(); } catch {}
 }
-window.addEventListener("hashchange", handleHashRoute);
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const drawer = document.getElementById("eventos-drawer");
+  if (!drawer || drawer.hidden) return;
+  // Issue #24: gate Escape on the drawer's own visibility, NOT the opener's
+  // view. The previous guard checked `eventosViewIsActive(openerView)` which
+  // silently bailed for case B (Monitoramento map-dot entry): the opener's
+  // view is "dashboard" because the dot lives inside #view-dashboard, but
+  // the eventos view is always active while the drawer is open, so the
+  // drawer would never close via Escape for that entry path.
+  // Close via history.back when there's a previous entry; otherwise rewrite
+  // the hash to drop the events/ fragment and re-run the router. Focus
+  // restoration is the responsibility of closeEventDrawer (it tracks
+  // eventOpener internally), so this handler doesn't need to restore focus.
+  event.preventDefault();
+  if (eventOpener && (history.length ?? 1) > 1) {
+    history.back();
+    return;
+  }
+  const target = window.location.pathname + window.location.search;
+  history.replaceState(null, "", target);
+  if (typeof handleHashRoute === "function") handleHashRoute();
+});
+}
+// Issue #15 round 3 (BLOCKER): re-add the hashchange listener. The
+// original lane registered it right after init() so that "Abrir evento"
+// (case A) and Monitoramento map-dot clicks (case B) — both of which only
+// mutate `window.location.hash` — actually trigger handleHashRoute() in
+// a real browser. The vm stub's addEventListener is a no-op, so this
+// regression went undetected by tests/test_eventos_vm.mjs.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("hashchange", handleHashRoute);
+}
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
   document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
 }
@@ -1749,6 +2033,11 @@ $("#lang-toggle").addEventListener("click", async () => {
   updateHtmlLang();
   applyTranslations();
   writeLocalPrefs();
+  // Issue #15 round 2 (BL1): language toggle re-renders the active data
+  // view (which can call loadReviews and overwrite in-progress edits on
+  // other cards if the drawer is mid-save). Close the drawer first so
+  // the re-render can't clobber a save-in-flight.
+  if (typeof closeEventDrawer === "function") closeEventDrawer();
   // Re-render the active data view so table rows pick up the new language
   const activeTab = $(".tab.active");
   if (activeTab) {
@@ -1775,6 +2064,15 @@ $$(".tab").forEach((tab) => {
     tab.classList.add("active");
     try { tab.setAttribute("aria-selected", "true"); } catch {}
     $$(".view").forEach((view) => view.classList.remove("active"));
+    // Issue #15 round 2 (BL1): close the investigation drawer whenever a
+    // tab is clicked. closeEventDrawer is a no-op when the drawer is
+    // already hidden, so re-clicking the active events tab (the path
+    // handleHashRoute takes on a deep-link open) doesn't disturb a
+    // drawer that was just opened by a SUBSEQUENT openEventDrawer call.
+    // The real benefit is leaving the events view (e.g. switching to
+    // Monitoramento) — the stale drawer that would otherwise re-appear
+    // on return is gone for good.
+    if (typeof closeEventDrawer === "function") closeEventDrawer();
     const target = $(`#view-${tab.dataset.view}`);
     if (target) {
       target.classList.add("active");
@@ -1823,15 +2121,26 @@ $$(".tab").forEach((tab) => {
     }
   });
 });
-
-$("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
-$("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
-$("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
-$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#view-dashboard"), loadMonitoramento));
-$("#area-filter").addEventListener("click", (event) => {
-  appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
-  appState.areasOffset = 0;
-  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
+$("#monitoramento-map")?.addEventListener("click", (event) => {
+  const dot = event.target.closest && event.target.closest("a.event-dot");
+  if (!dot) return;
+  // Issue #27 (Opus NIT): wrap decodeURIComponent in try/catch so a
+  // dot href with malformed percent-encoding doesn't throw an
+  // unhandled URIError. Fall back to the raw href.
+  let rawHref = dot.getAttribute("href") || "";
+  try { rawHref = decodeURIComponent(rawHref); } catch (_) { /* keep raw href */ }
+  const match = rawHref.match(/^#\/events\/([\w-]+)$/);
+  if (!match) return;
+  // Issue #15 round 4 (RISK 2): the dot lives inside #view-dashboard,
+  // which is display:none while the events view is active. The round-3
+  // "events" change was a no-op in browsers (focusing a hidden element
+  // is ignored). Storing "dashboard" — the view the dot actually lives
+  // in — matches what the close path needs to know: whether the opener's
+  // view is the one currently active. If the user is on the events
+  // view (always, for case B), the close path correctly skips focus
+  // restoration to the dot and the user keeps focus on whatever they
+  // were on in the events view.
+  setEventOpener(match[1], dot, "dashboard");
 });
 // Ver todos em Eventos button on Monitoramento (issue #14).
 $("#monitoramento-view-all-events")?.addEventListener("click", (event) => {
@@ -1843,6 +2152,15 @@ $("#monitoramento-fr24-details")?.addEventListener("click", (event) => {
   event.preventDefault();
   const tab = $("#tab-fr24");
   if (tab) tab.click();
+});
+$("#sync-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_syncing"), "/api/boundaries/sync"));
+$("#poll-now").addEventListener("click", (event) => runAction(event.currentTarget, t("action_polling"), "/api/poll"));
+$("#test-email").addEventListener("click", (event) => runAction(event.currentTarget, t("action_testing_email"), "/api/email/test"));
+$("#refresh").addEventListener("click", (event) => withLoading(event.currentTarget, $("#view-dashboard"), loadMonitoramento));
+$("#area-filter").addEventListener("click", (event) => {
+  appState.areaFilter = { search: $("#area-search").value, category: $("#area-category").value, selected: $("#area-selected").value };
+  appState.areasOffset = 0;
+  withLoading(event.currentTarget, $("#areas-body"), loadAreas);
 });
 const debouncedAreaSearch = debounce(() => {
   try {
@@ -2060,6 +2378,12 @@ $("#event-track-panel")?.addEventListener("click", async (event) => {
       method: "POST",
       body: JSON.stringify({ confirm: true }),
     });
+    // Issue #26: loadEventDetail no longer writes into #event-detail-content
+    // (the element is orphaned — handleHashRoute never activates
+    // #view-event-detail after PR #15). The meaningful side effect is
+    // setupEventTrackPanel(event), which re-derives the button + cost from
+    // the latest /api/events state. Keep the call so the test surface and
+    // any direct callers still refresh.
     if (panel.dataset.eventId !== requestedEventId) return;
     await loadEventDetail(requestedEventId);
     if (panel.dataset.eventId !== requestedEventId) {
@@ -2277,3 +2601,4 @@ init().catch((error) => {
   $("#login-error").textContent = error.message;
   showLogin();
 });
+
