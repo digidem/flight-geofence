@@ -1471,17 +1471,85 @@ check(
 check(
   "(19b/NIT) map-dot click handler wraps decodeURIComponent in try/catch",
   /\$\("#monitoramento-map"\)[\s\S]*?try\s*\{\s*rawHref\s*=\s*decodeURIComponent/s.test(_appSrc2),
-  `expected decodeURIComponent wrapped in try/catch in the map-dot handler`,
 );
 
-console.log("\nScenario 20: PR #15 follow-ups — #28 wireReviewCard comment accuracy");
+console.log("\nScenario 21: PR #30 — map X-overflow on mobile");
+// Issue #30: at viewports <1024px the Monitoramento map panel rendered
+// wider than the viewport because the CSS Grid column expanded to fit
+// the SVG's intrinsic width. Three CSS rules guard the fix:
+//   1. .monitoramento-grid uses minmax(0, 1fr) instead of plain 1fr
+//   2. .monitoramento-map has overflow-x: hidden
+//   3. .monitoramento-map svg has max-width: 100%
+check(
+  "(21a) .monitoramento-grid uses minmax(0, 1fr) so children can shrink below intrinsic width",
+  /\.monitoramento-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(\s*0\s*,\s*1fr\s*\)/s.test(_componentsSrc),
+  `expected 'grid-template-columns: minmax(0, 1fr)' in .monitoramento-grid`,
+);
+check(
+  "(21b) .monitoramento-map has overflow-x: hidden (clip horizontal overflow)",
+  /\.monitoramento-map\s*\{[\s\S]*?overflow-x:\s*hidden/s.test(_componentsSrc),
+  `expected 'overflow-x: hidden' in .monitoramento-map`,
+);
+check(
+  "(21c) .monitoramento-map svg has max-width: 100% (cap SVG width to container)",
+  /\.monitoramento-map\s+svg\s*\{[\s\S]*?max-width:\s*100%/s.test(_componentsSrc),
+  `expected 'max-width: 100%' in .monitoramento-map svg`,
+);
+check(
+  "(21d) .monitoramento-grid desktop 2-column rule still uses minmax(0, …) (no regression)",
+  /@media\s*\(\s*min-width:\s*1024px\s*\)\s*\{[\s\S]*?\.monitoramento-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(\s*0\s*,\s*2fr\s*\)\s+minmax\(\s*0\s*,\s*1fr\s*\)/s.test(_componentsSrc),
+  `expected desktop 2-column rule to keep minmax(0, …)`,
+);
+
+console.log("\nScenario 22: PR #31 — drawer close button (mobile touch affordance)");
+// Issue #31: on touch devices Escape is unavailable, so the drawer
+// must expose a close button. openEventDrawer prepends an
+// <button class="eventos-drawer-close"> as the first child of the
+// drawer, wires its click to closeEventDrawer(), and the i18n key
+// 'eventos_close_aria' exists in both PT and EN.
+check(
+  "(22a) openEventDrawer renders .eventos-drawer-close as first child of the drawer",
+  /drawer\.innerHTML\s*=\s*closeButton\s*\+\s*renderEventDetailCard/s.test(_appSrc2),
+  `expected 'drawer.innerHTML = closeButton + renderEventDetailCard' in openEventDrawer`,
+);
+check(
+  "(22b) .eventos-drawer-close button has a click handler that calls closeEventDrawer()",
+  /\.eventos-drawer-close[^]*?addEventListener\("click"[^]*?closeEventDrawer\(\)/s.test(_appSrc2),
+  `expected .eventos-drawer-close click handler to call closeEventDrawer()`,
+);
+check(
+  "(22c) eventos_close_aria i18n key exists and differs EN/PT",
+  tr.pt.eventos_close_aria && tr.en.eventos_close_aria && tr.pt.eventos_close_aria !== tr.en.eventos_close_aria,
+  `pt=${JSON.stringify(tr.pt.eventos_close_aria)} en=${JSON.stringify(tr.en.eventos_close_aria)}`,
+);
+check(
+  "(22d) .eventos-drawer-close CSS rule exists with touch-friendly sizing (>=32x32)",
+  /\.eventos-drawer-close\s*\{[\s\S]*?width:\s*32px[\s\S]*?height:\s*32px/s.test(_componentsSrc),
+  `expected .eventos-drawer-close with 32x32 touch target`,
+);
+check(
+  "(22e) .eventos-drawer is position: relative so the absolute close button anchors to it",
+  /\.eventos-drawer\s*\{[\s\S]*?position:\s*relative/s.test(_componentsSrc),
+  `expected .eventos-drawer to be position: relative`,
+);
+check(
+  "(22f) openEventDrawer moves focus into the drawer on open (screen-reader / keyboard a11y)",
+  /drawer\.focus\(\s*\{\s*preventScroll:\s*true\s*\}\s*\)/s.test(_appSrc2),
+  `expected 'drawer.focus({ preventScroll: true })' in openEventDrawer (Sonnet review regression guard)`,
+);
+check(
+  "(22g) openEventDrawer sets tabindex=-1 on the drawer (paired with focus({preventScroll:true}))",
+  /drawer\.setAttribute\(\s*["']tabindex["']\s*,\s*["']-1["']\s*\)/s.test(_appSrc2),
+  `expected 'drawer.setAttribute("tabindex", "-1")' in openEventDrawer`,
+);
+console.log("\nScenario 23: PR #15 follow-ups — #28 wireReviewCard comment accuracy");
 // Issue #28: the inline comment in wireReviewCard's save handler claimed
 // the check ran "after card.replaceWith (line 1558), not before" — but
 // replaceWith is actually at line 1571 (post-#28 edits). The new comment
 // states the ordering correctly and explains that Element.querySelector
 // walks detached subtrees.
 check(
-  "(20a/NIT) wireReviewCard save-handler comment explains the post-replaceWith ordering",
+  "(23a/NIT) wireReviewCard save-handler comment explains the post-replaceWith ordering",
   /Issue\s*#\s*28[\s\S]*?post-replaceWith[\s\S]*?Element\.querySelector/s.test(_appSrc2),
   `expected Issue #28 comment explaining post-replaceWith ordering`,
 );
