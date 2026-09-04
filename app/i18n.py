@@ -258,6 +258,8 @@ TRANSLATIONS = {
         # Eventos (issue #15)
         "eventos_title": "Eventos",
         "eventos_drawer_aria": "Investigação do evento selecionado",
+        # issue #31: drawer close button (mobile touch affordance)
+        "eventos_close_aria": "Fechar investigação",
         "eventos_needs_review": "Precisa revisar",
         "eventos_classification_actions": "Ações de classificação",
         "eventos_empty_state": "Nenhum evento aguarda revisão · Monitoramento normal",
@@ -719,6 +721,8 @@ TRANSLATIONS = {
         # Eventos (issue #15)
         "eventos_title": "Events",
         "eventos_drawer_aria": "Selected event investigation",
+        # issue #31: drawer close button (mobile touch affordance)
+        "eventos_close_aria": "Close investigation",
         "eventos_needs_review": "Needs review",
         "eventos_classification_actions": "Classification actions",
         "eventos_empty_state": "No events awaiting review · Monitoring normal",
