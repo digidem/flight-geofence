@@ -1442,6 +1442,13 @@ async function loadAreas() {
     const nextBtn = $("#areas-next");
     if (prevBtn) prevBtn.disabled = offset <= 0;
     if (nextBtn) nextBtn.disabled = total <= offset + limit;
+    const hasFilter = Boolean(
+      (appState.areaFilter.search && appState.areaFilter.search.trim()) ||
+      appState.areaFilter.category ||
+      appState.areaFilter.selected
+    );
+    const hasAreas = (status?.areas?.total ?? result.total ?? 0) > 0;
+    const emptyMsg = hasFilter || hasAreas ? t("areas_no_match") : t("areas_no_data");
     $("#areas-body").innerHTML = result.items.length
       ? result.items
           .map(
@@ -1453,7 +1460,7 @@ async function loadAreas() {
           </tr>`,
           )
           .join("")
-      : `<tr><td colspan="6" class="muted">${t("areas_no_data")}</td></tr>`;
+      : `<tr><td colspan="6" class="muted">${escapeHtml(emptyMsg)}</td></tr>`;
     $$(".area-checkbox").forEach((checkbox) => {
       checkbox.addEventListener("change", async () => {
         await withLoading(checkbox, container, async () => {
