@@ -828,8 +828,79 @@ label.check.area-label {
   gap: 8px;
   flex-wrap: wrap;
 }
-.areas-instructions {
+/* Áreas sub-nav (issue #17) */
+.areas-subnav {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  position: sticky;
+  top: 48px;
+  z-index: 5;
+  background: var(--paper);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.areas-subnav button {
+  flex: 1;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.areas-subnav button.active,
+.areas-subnav button[aria-selected="true"] {
+  background: var(--burgundy);
+  color: #fff;
+  border-color: var(--burgundy);
+}
+.cluster-minimap-note {
+  margin: 12px 20px 4px;
+  font-size: 0.85rem;
+}
+
+/* Protected areas selection (issue #16) */
+.areas-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.areas-toolbar {
+  position: sticky;
+  top: 104px;
+  z-index: 4;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.areas-toolbar .panel-header {
+  padding: 0 0 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.areas-toolbar .bulk {
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.areas-toolbar .areas-instructions {
+  margin: 0;
   padding-bottom: 0;
+}
+@media (max-width: 599px) {
+  .areas-toolbar {
+    padding: 12px;
+    gap: 8px;
+  }
 }
 .detail-back {
   margin-top: 16px;

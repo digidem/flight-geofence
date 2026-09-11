@@ -636,48 +636,63 @@ async function loadFr24() {
     ? `${t("fr24_overlap_warning")}: ${status.overlap_warnings.map((pair) => pair.join(" / ")).join(", ")}`
     : "";
 
-  appState.fr24Clusters = clustersResult.clusters;
-  $("#fr24-cluster-list").innerHTML = clustersResult.clusters.length
-    ? clustersResult.clusters.map(fr24ClusterCard).join("")
-    : `<p class="muted">${t("fr24_no_clusters")}</p>`;
-  $$("#fr24-cluster-list .review-card").forEach((card) => {
-    const cluster = clustersResult.clusters.find((item) => item.id === card.dataset.id);
-    if (!cluster) return;
-    card.querySelector(".fr24-edit").addEventListener("click", () => fr24PopulateForm(cluster));
-    card.querySelector(".fr24-delete").addEventListener("click", () => {
-      const btn = card.querySelector(".fr24-delete");
-      showModal({
-        title: t("fr24_delete"),
-        message: `${t("fr24_delete")}: ${cluster.name}?`,
-        confirmText: t("fr24_delete"),
-        cancelText: "Cancel",
-        onConfirm: async () => {
-          try {
-            await withLoading(btn, card, async () => {
-              await api(`/api/fr24/clusters/${encodeURIComponent(cluster.id)}`, { method: "DELETE" });
-              await loadFr24();
-            });
-          } catch (error) {
-            let errEl = card.querySelector(".fr24-delete-error");
-            if (!errEl) {
-              errEl = document.createElement("div");
-              errEl.className = "error fr24-delete-error";
-              errEl.setAttribute("role", "alert");
-              card.append(errEl);
+  await loadFr24Clusters();
+}
+
+// Dedicated cluster loader (issue #17) -- populates #fr24-cluster-list,
+// #fr24-area-picker, and wires edit/delete handlers in Áreas › Clusters.
+async function loadFr24Clusters() {
+  const [selectedAreasResult, clustersResult] = await Promise.all([
+    api("/api/areas?selected=true&limit=500"),
+    api("/api/fr24/clusters"),
+  ]);
+  appState.fr24SelectedAreas = selectedAreasResult.items || [];
+  appState.fr24Clusters = clustersResult.clusters || [];
+
+  const list = $("#fr24-cluster-list");
+  if (list) {
+    list.innerHTML = appState.fr24Clusters.length
+      ? appState.fr24Clusters.map(fr24ClusterCard).join("")
+      : `<p class="muted">${t("fr24_no_clusters")}</p>`;
+    $$("#fr24-cluster-list .review-card").forEach((card) => {
+      const cluster = appState.fr24Clusters.find((item) => item.id === card.dataset.id);
+      if (!cluster) return;
+      card.querySelector(".fr24-edit")?.addEventListener("click", () => fr24PopulateForm(cluster));
+      card.querySelector(".fr24-delete")?.addEventListener("click", () => {
+        const btn = card.querySelector(".fr24-delete");
+        showModal({
+          title: t("fr24_delete"),
+          message: `${t("fr24_delete")}: ${cluster.name}?`,
+          confirmText: t("fr24_delete"),
+          cancelText: "Cancel",
+          onConfirm: async () => {
+            try {
+              await withLoading(btn, card, async () => {
+                await api(`/api/fr24/clusters/${encodeURIComponent(cluster.id)}`, { method: "DELETE" });
+                await loadFr24Clusters();
+              });
+            } catch (error) {
+              let errEl = card.querySelector(".fr24-delete-error");
+              if (!errEl) {
+                errEl = document.createElement("div");
+                errEl.className = "error fr24-delete-error";
+                errEl.setAttribute("role", "alert");
+                card.append(errEl);
+              }
+              errEl.textContent = error.message;
+              errEl.hidden = false;
             }
-            errEl.textContent = error.message;
-            errEl.hidden = false;
-          }
-        },
+          },
+        });
       });
     });
-  });
+  }
 
-  // Re-render the area picker preserving whatever's currently checked
-  // (rather than always resetting) so a re-render triggered mid-edit --
-  // e.g. by the language toggle -- doesn't discard an in-progress selection.
-  const currentlyChecked = $$(".fr24-area-checkbox:checked").map((box) => box.value);
-  $("#fr24-area-picker").innerHTML = fr24AreaPickerRows(currentlyChecked);
+  const picker = $("#fr24-area-picker");
+  if (picker) {
+    const currentlyChecked = $$(".fr24-area-checkbox:checked").map((box) => box.value);
+    picker.innerHTML = fr24AreaPickerRows(currentlyChecked);
+  }
 }
 
 function eventLabel(type) {
@@ -1442,6 +1457,13 @@ async function loadAreas() {
     const nextBtn = $("#areas-next");
     if (prevBtn) prevBtn.disabled = offset <= 0;
     if (nextBtn) nextBtn.disabled = total <= offset + limit;
+    const hasFilter = Boolean(
+      (appState.areaFilter.search && appState.areaFilter.search.trim()) ||
+      appState.areaFilter.category ||
+      appState.areaFilter.selected
+    );
+    const hasAreas = (status?.areas?.total ?? result.total ?? 0) > 0;
+    const emptyMsg = hasFilter || hasAreas ? t("areas_no_match") : t("areas_no_data");
     $("#areas-body").innerHTML = result.items.length
       ? result.items
           .map(
@@ -1453,7 +1475,7 @@ async function loadAreas() {
           </tr>`,
           )
           .join("")
-      : `<tr><td colspan="6" class="muted">${t("areas_no_data")}</td></tr>`;
+      : `<tr><td colspan="6" class="muted">${escapeHtml(emptyMsg)}</td></tr>`;
     $$(".area-checkbox").forEach((checkbox) => {
       checkbox.addEventListener("change", async () => {
         await withLoading(checkbox, container, async () => {
@@ -1925,6 +1947,32 @@ function initSettingsStepper() {
   showStep(1);
 }
 
+function initAreasSubnav() {
+  const tabProtected = $("#areas-tab-protected");
+  const tabClusters = $("#areas-tab-clusters");
+  const panelProtected = $("#areas-panel-protected");
+  const panelClusters = $("#areas-panel-clusters");
+  if (!tabProtected || !tabClusters || !panelProtected || !panelClusters) return;
+
+  function switchSubnav(target) {
+    const isProtected = target === "protected";
+    tabProtected.classList.toggle("active", isProtected);
+    tabProtected.setAttribute("aria-selected", String(isProtected));
+    panelProtected.hidden = !isProtected;
+
+    tabClusters.classList.toggle("active", !isProtected);
+    tabClusters.setAttribute("aria-selected", String(!isProtected));
+    panelClusters.hidden = isProtected;
+
+    if (!isProtected) {
+      loadFr24Clusters().catch(() => {});
+    }
+  }
+
+  tabProtected.addEventListener("click", () => switchSubnav("protected"));
+  tabClusters.addEventListener("click", () => switchSubnav("clusters"));
+}
+
 function initHelpToggles() {
   document.querySelectorAll(".help-button").forEach((btn) => {
     const targetId = btn.getAttribute("aria-describedby");
@@ -1979,6 +2027,7 @@ async function init() {
   handleHashRoute();
   try { fr24WizardInit(); } catch {}
   try { initSettingsStepper(); } catch {}
+  try { initAreasSubnav(); } catch {}
   try { initHelpToggles(); } catch {}
 }
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
@@ -2016,7 +2065,12 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
   window.addEventListener("hashchange", handleHashRoute);
 }
 if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
-  document.addEventListener("DOMContentLoaded", () => { try { fr24WizardInit(); } catch {} try { initSettingsStepper(); } catch {} try { initHelpToggles(); } catch {} });
+  document.addEventListener("DOMContentLoaded", () => {
+    try { fr24WizardInit(); } catch {}
+    try { initSettingsStepper(); } catch {}
+    try { initAreasSubnav(); } catch {}
+    try { initHelpToggles(); } catch {}
+  });
 }
 
 $("#login-form").addEventListener("submit", async (event) => {
@@ -2061,7 +2115,10 @@ $("#lang-toggle").addEventListener("click", async () => {
     const view = activeTab.dataset.view;
     if (view === "dashboard") await loadMonitoramento();
 
-    if (view === "areas") await loadAreas();
+    if (view === "areas") {
+      if ($("#areas-tab-clusters")?.classList.contains("active")) await loadFr24Clusters();
+      else await loadAreas();
+    }
     if (view === "events") await loadReviews();
     if (view === "settings") await loadSettings();
     if (view === "fr24") await loadFr24();
@@ -2113,7 +2170,10 @@ $$(".tab").forEach((tab) => {
     if (c) try { c.setAttribute("aria-busy", "true"); } catch {}
     try {
       if (tab.dataset.view === "dashboard") await loadMonitoramento();
-      if (tab.dataset.view === "areas") await loadAreas();
+      if (tab.dataset.view === "areas") {
+        if ($("#areas-tab-clusters")?.classList.contains("active")) await loadFr24Clusters();
+        else await loadAreas();
+      }
       if (tab.dataset.view === "events") await loadReviews();
       if (tab.dataset.view === "settings") await loadSettings();
       if (tab.dataset.view === "fr24") await loadFr24();
