@@ -136,7 +136,8 @@ TRANSLATIONS = {
         "col_state": "Estado",
         "col_phase_category": "Fase/Categoria",
         "col_source": "Fonte",
-        "areas_no_data": "Nenhuma área encontrada. Execute a sincronização de limites primeiro.",
+        "areas_no_data": "Nenhuma área disponível",
+        "areas_no_match": "Nenhuma área corresponde aos filtros",
         # Events review
         "review_subtitle": "Evidência de calibração",
         "review_title": "Revisar eventos detectados",
@@ -603,7 +604,8 @@ TRANSLATIONS = {
         "col_state": "State",
         "col_phase_category": "Phase/category",
         "col_source": "Source",
-        "areas_no_data": "No areas found. Run boundary synchronization first.",
+        "areas_no_data": "No areas available",
+        "areas_no_match": "No areas match the filters",
         # Events review
         "review_subtitle": "Calibration evidence",
         "review_title": "Review detected events",
