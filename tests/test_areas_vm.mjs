@@ -365,7 +365,7 @@ check(
 );
 check(
   "(1b) .areas-shell wraps the view-areas content",
-  /<section\s+id=["']view-areas["'][^>]*>\s*<div\s+class=["']areas-shell["']>/.test(indexHtml),
+  /<section\s+id=["']view-areas["'][\s\S]*?<div\s+class=["']areas-shell["']>/.test(indexHtml),
   "expected <div class='areas-shell'> inside #view-areas"
 );
 check(
@@ -409,9 +409,9 @@ check(
   "expected .areas-shell flex layout rules in components.css"
 );
 check(
-  "(2b) .areas-toolbar has position: sticky below tabs",
-  /\.areas-toolbar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*48px;[\s\S]*?z-index:\s*4;/.test(componentsCss),
-  "expected sticky top:48px z-index:4 on .areas-toolbar"
+  "(2b) .areas-toolbar has position: sticky below tabs/subnav",
+  /\.areas-toolbar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*(?:48|104)px;[\s\S]*?z-index:\s*4;/.test(componentsCss),
+  "expected sticky top:48px or top:104px z-index:4 on .areas-toolbar"
 );
 check(
   "(2c) .areas-toolbar .bulk has padding: 0 to sit flush inside toolbar",

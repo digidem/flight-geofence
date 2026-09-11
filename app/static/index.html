@@ -97,17 +97,81 @@
       </section>
 
       <section id="view-areas" class="view" role="tabpanel" aria-labelledby="tab-areas" tabindex="0">
-        <div class="areas-shell">
-          <div class="areas-toolbar">
-            <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="areas_subtitle">Dados oficiais FUNAI + CNUC</p><h2 data-i18n="areas_title">Selecionar áreas monitoradas</h2></div>
-              <div class="filters"><input id="area-search" data-i18n="areas_search" placeholder="Buscar nome, estado ou fase"><select id="area-category"><option value="" data-i18n="areas_all_types">Todos os tipos</option><option value="indigenous_territory" data-i18n="areas_indigenous">Territórios indígenas</option><option value="conservation_unit" data-i18n="areas_conservation">Unidades de conservação</option></select><select id="area-selected"><option value="" data-i18n="areas_all">Todos</option><option value="true" data-i18n="areas_selected">Selecionados</option><option value="false" data-i18n="areas_not_selected">Não selecionados</option></select><button id="area-filter" class="button secondary" data-i18n="areas_filter">Filtrar</button></div>
+        <nav class="areas-subnav" role="tablist" aria-label="Sub-navegação de áreas" data-i18n-aria="areas_subnav_aria">
+          <button id="areas-tab-protected" role="tab" aria-selected="true" aria-controls="areas-panel-protected" class="active" data-i18n="areas_subnav_protected">Áreas protegidas</button>
+          <button id="areas-tab-clusters" role="tab" aria-selected="false" aria-controls="areas-panel-clusters" data-i18n="areas_subnav_clusters">Clusters</button>
+        </nav>
+
+        <div id="areas-panel-protected" class="areas-subpanel" role="tabpanel" aria-labelledby="areas-tab-protected">
+          <div class="areas-shell">
+            <div class="areas-toolbar">
+              <div class="panel-header wrap"><div><p class="eyebrow" data-i18n="areas_subtitle">Dados oficiais FUNAI + CNUC</p><h2 data-i18n="areas_title">Selecionar áreas monitoradas</h2></div>
+                <div class="filters"><input id="area-search" data-i18n="areas_search" placeholder="Buscar nome, estado ou fase"><select id="area-category"><option value="" data-i18n="areas_all_types">Todos os tipos</option><option value="indigenous_territory" data-i18n="areas_indigenous">Territórios indígenas</option><option value="conservation_unit" data-i18n="areas_conservation">Unidades de conservação</option></select><select id="area-selected"><option value="" data-i18n="areas_all">Todos</option><option value="true" data-i18n="areas_selected">Selecionados</option><option value="false" data-i18n="areas_not_selected">Não selecionados</option></select><button id="area-filter" class="button secondary" data-i18n="areas_filter">Filtrar</button></div>
+              </div>
+              <div class="bulk"><button id="select-all-filtered" class="button primary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><button id="deselect-all-filtered" class="button ghost dark" data-i18n="areas_deselect_filtered">Desselecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
+              <div class="phase-grid areas-instructions"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" role="alert" aria-live="assertive" hidden></p></div>
             </div>
-            <div class="bulk"><button id="select-all-filtered" class="button primary" data-i18n="areas_select_filtered">Selecionar todos filtrados</button><button id="deselect-all-filtered" class="button ghost dark" data-i18n="areas_deselect_filtered">Desselecionar todos filtrados</button><span id="area-summary" class="muted"></span></div>
-            <div class="phase-grid areas-instructions"><p class="muted" data-i18n="areas_instructions">Marque as áreas que deseja monitorar. Cada alteração regenera as regiões de cobertura e ativa a vigilância; o Flightradar24 exige adicionalmente um cluster ativo na aba FR24.</p><p id="area-status" class="warning" hidden></p><p id="area-error" class="error" role="alert" aria-live="assertive" hidden></p></div>
+            <article class="panel">
+              <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="areas_title">Selecionar áreas monitoradas</caption><thead><tr><th scope="col" data-i18n="col_monitor">Monitorar</th><th scope="col" data-i18n="col_name">Nome</th><th scope="col" data-i18n="col_type">Tipo</th><th scope="col" data-i18n="col_state">Estado</th><th scope="col" data-i18n="col_phase_category">Fase/Categoria</th><th scope="col" data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
+              <div class="actions" aria-label="Areas pagination"><button id="areas-prev" class="button ghost dark" data-i18n="areas_prev" aria-label="Previous page">Anterior</button><button id="areas-next" class="button ghost dark" data-i18n="areas_next" aria-label="Next page">Próxima</button><span id="areas-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
+            </article>
           </div>
+        </div>
+
+        <div id="areas-panel-clusters" class="areas-subpanel" role="tabpanel" aria-labelledby="areas-tab-clusters" hidden>
           <article class="panel">
-            <div class="table-wrap"><table class="table--detail"><caption class="sr-only" data-i18n="areas_title">Selecionar áreas monitoradas</caption><thead><tr><th scope="col" data-i18n="col_monitor">Monitorar</th><th scope="col" data-i18n="col_name">Nome</th><th scope="col" data-i18n="col_type">Tipo</th><th scope="col" data-i18n="col_state">Estado</th><th scope="col" data-i18n="col_phase_category">Fase/Categoria</th><th scope="col" data-i18n="col_source">Fonte</th></tr></thead><tbody id="areas-body"></tbody></table></div>
-            <div class="actions" aria-label="Areas pagination"><button id="areas-prev" class="button ghost dark" data-i18n="areas_prev" aria-label="Previous page">Anterior</button><button id="areas-next" class="button ghost dark" data-i18n="areas_next" aria-label="Next page">Próxima</button><span id="areas-pagination-info" class="muted" role="status" aria-live="polite"></span></div>
+            <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_clusters_subtitle">Até 2 clusters ativos</p><h2 data-i18n="fr24_clusters_title">Clusters configurados</h2></div></div>
+            <p class="muted cluster-minimap-note" data-i18n="areas_clusters_explanation">O retângulo delimitado no mapa representa a área geográfica consultada junto ao Flightradar24 para cobrir as áreas protegidas selecionadas.</p>
+            <div id="fr24-cluster-list" class="review-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_form_subtitle">Adicionar ou editar</p><h2 data-i18n="fr24_form_title">Cluster</h2></div></div>
+            <form id="fr24-cluster-form" class="form-grid">
+              <input type="hidden" name="id">
+              <div id="fr24-wizard-progress" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Cluster setup progress">Step 1 of 4</div>
+              <div id="fr24-wizard-step-label" class="muted">Step 1 of 4</div>
+              <fieldset data-step="1">
+                <legend>Step 1 · Info</legend>
+                <label data-i18n="fr24_cluster_name">Nome<input name="name" type="text" required maxlength="200"></label>
+                <label class="check"><input type="checkbox" name="enabled" checked> <span data-i18n="fr24_cluster_enabled">Ativo</span></label>
+              </fieldset>
+              <fieldset data-step="2" hidden>
+                <legend>Step 2 · Buffer &amp; altitude</legend>
+                <label data-i18n="fr24_cluster_buffer">Buffer (km)<input name="buffer_km" type="number" min="1" max="100" value="15" step="0.1"></label>
+                <label data-i18n="fr24_cluster_min_alt">Altitude mínima (ft)<input name="min_altitude_ft" type="number" min="-2000" max="60000" value="-2000"></label>
+                <label data-i18n="fr24_cluster_max_alt">Altitude máxima (ft)<input name="max_altitude_ft" type="number" min="-2000" max="60000" value="10000"></label>
+              </fieldset>
+              <fieldset data-step="3" hidden>
+                <legend>Step 3 · Categories &amp; bounds</legend>
+                <fieldset><legend data-i18n="fr24_cluster_categories">Categorias FR24</legend>
+                  <label class="check"><input type="checkbox" name="categories" value="T" checked> T — <span data-i18n="fr24_cat_t">aviação geral</span></label>
+                  <label class="check"><input type="checkbox" name="categories" value="H" checked> H — <span data-i18n="fr24_cat_h">helicópteros</span></label>
+                  <label class="check"><input type="checkbox" name="categories" value="N" checked> N — <span data-i18n="fr24_cat_n">não categorizado</span></label>
+                  <label class="check"><input type="checkbox" name="categories" value="P"> P — <span data-i18n="fr24_cat_p">passageiros (custo)</span></label>
+                  <label class="check"><input type="checkbox" name="categories" value="C"> C — <span data-i18n="fr24_cat_c">carga (custo)</span></label>
+                  <label class="check"><input type="checkbox" name="categories" value="J"> J — <span data-i18n="fr24_cat_j">jatos executivos</span></label>
+                </fieldset>
+                <label class="check"><input type="checkbox" id="fr24-manual-bounds" name="use_manual_bounds"> <span data-i18n="fr24_manual_bounds">Substituir limites manualmente</span></label>
+                <div id="fr24-manual-bounds-fields" class="form-grid compact" hidden>
+                  <label data-i18n="fr24_bounds_north">Norte<input name="manual_north" type="number" step="0.000001"></label>
+                  <label data-i18n="fr24_bounds_south">Sul<input name="manual_south" type="number" step="0.000001"></label>
+                  <label data-i18n="fr24_bounds_west">Oeste<input name="manual_west" type="number" step="0.000001"></label>
+                  <label data-i18n="fr24_bounds_east">Leste<input name="manual_east" type="number" step="0.000001"></label>
+                </div>
+                <div id="fr24-wizard-bounds-error" class="error" role="alert" hidden></div>
+              </fieldset>
+              <fieldset data-step="4" hidden>
+                <legend>Step 4 · Areas</legend>
+                <fieldset><legend data-i18n="fr24_cluster_areas">Áreas membro (dentre as selecionadas)</legend><div id="fr24-area-picker" class="table-wrap area-picker"></div></fieldset>
+              </fieldset>
+              <div class="wizard-nav">
+                <button type="button" id="fr24-wizard-prev" class="button ghost dark" hidden>Prev</button>
+                <button type="button" id="fr24-wizard-next" class="button secondary">Next</button>
+                <button type="submit" id="fr24-wizard-save" class="button primary" hidden data-i18n="fr24_save_cluster">Salvar cluster</button>
+                <button type="button" id="fr24-cluster-reset" class="button ghost dark" data-i18n="fr24_new_cluster">Novo cluster</button>
+              </div>
+              <div class="form-result" role="status" aria-live="polite"></div>
+            </form>
           </article>
         </div>
       </section>
@@ -216,59 +280,6 @@
           <p class="eyebrow" data-i18n="fr24_retention_title">Retenção de dados</p>
           <div id="fr24-retention" class="metric-grid"></div>
           <div id="fr24-overlap-warning" class="error"></div>
-        </article>
-        <article class="panel">
-          <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_clusters_subtitle">Até 2 clusters ativos</p><h2 data-i18n="fr24_clusters_title">Clusters configurados</h2></div></div>
-          <div id="fr24-cluster-list" class="review-list"></div>
-        </article>
-        <article class="panel">
-          <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_form_subtitle">Adicionar ou editar</p><h2 data-i18n="fr24_form_title">Cluster</h2></div></div>
-          <form id="fr24-cluster-form" class="form-grid">
-            <input type="hidden" name="id">
-            <div id="fr24-wizard-progress" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Cluster setup progress">Step 1 of 4</div>
-            <div id="fr24-wizard-step-label" class="muted">Step 1 of 4</div>
-            <fieldset data-step="1">
-              <legend>Step 1 · Info</legend>
-              <label data-i18n="fr24_cluster_name">Nome<input name="name" type="text" required maxlength="200"></label>
-              <label class="check"><input type="checkbox" name="enabled" checked> <span data-i18n="fr24_cluster_enabled">Ativo</span></label>
-            </fieldset>
-            <fieldset data-step="2" hidden>
-              <legend>Step 2 · Buffer &amp; altitude</legend>
-              <label data-i18n="fr24_cluster_buffer">Buffer (km)<input name="buffer_km" type="number" min="1" max="100" value="15" step="0.1"></label>
-              <label data-i18n="fr24_cluster_min_alt">Altitude mínima (ft)<input name="min_altitude_ft" type="number" min="-2000" max="60000" value="-2000"></label>
-              <label data-i18n="fr24_cluster_max_alt">Altitude máxima (ft)<input name="max_altitude_ft" type="number" min="-2000" max="60000" value="10000"></label>
-            </fieldset>
-            <fieldset data-step="3" hidden>
-              <legend>Step 3 · Categories &amp; bounds</legend>
-              <fieldset><legend data-i18n="fr24_cluster_categories">Categorias FR24</legend>
-                <label class="check"><input type="checkbox" name="categories" value="T" checked> T — <span data-i18n="fr24_cat_t">aviação geral</span></label>
-                <label class="check"><input type="checkbox" name="categories" value="H" checked> H — <span data-i18n="fr24_cat_h">helicópteros</span></label>
-                <label class="check"><input type="checkbox" name="categories" value="N" checked> N — <span data-i18n="fr24_cat_n">não categorizado</span></label>
-                <label class="check"><input type="checkbox" name="categories" value="P"> P — <span data-i18n="fr24_cat_p">passageiros (custo)</span></label>
-                <label class="check"><input type="checkbox" name="categories" value="C"> C — <span data-i18n="fr24_cat_c">carga (custo)</span></label>
-                <label class="check"><input type="checkbox" name="categories" value="J"> J — <span data-i18n="fr24_cat_j">jatos executivos</span></label>
-              </fieldset>
-              <label class="check"><input type="checkbox" id="fr24-manual-bounds" name="use_manual_bounds"> <span data-i18n="fr24_manual_bounds">Substituir limites manualmente</span></label>
-              <div id="fr24-manual-bounds-fields" class="form-grid compact" hidden>
-                <label data-i18n="fr24_bounds_north">Norte<input name="manual_north" type="number" step="0.000001"></label>
-                <label data-i18n="fr24_bounds_south">Sul<input name="manual_south" type="number" step="0.000001"></label>
-                <label data-i18n="fr24_bounds_west">Oeste<input name="manual_west" type="number" step="0.000001"></label>
-                <label data-i18n="fr24_bounds_east">Leste<input name="manual_east" type="number" step="0.000001"></label>
-              </div>
-              <div id="fr24-wizard-bounds-error" class="error" role="alert" hidden></div>
-            </fieldset>
-            <fieldset data-step="4" hidden>
-              <legend>Step 4 · Areas</legend>
-              <fieldset><legend data-i18n="fr24_cluster_areas">Áreas membro (dentre as selecionadas)</legend><div id="fr24-area-picker" class="table-wrap area-picker"></div></fieldset>
-            </fieldset>
-            <div class="wizard-nav">
-              <button type="button" id="fr24-wizard-prev" class="button ghost dark" hidden>Prev</button>
-              <button type="button" id="fr24-wizard-next" class="button secondary">Next</button>
-              <button type="submit" id="fr24-wizard-save" class="button primary" hidden data-i18n="fr24_save_cluster">Salvar cluster</button>
-              <button type="button" id="fr24-cluster-reset" class="button ghost dark" data-i18n="fr24_new_cluster">Novo cluster</button>
-            </div>
-            <div class="form-result" role="status" aria-live="polite"></div>
-          </form>
         </article>
         <article class="panel">
           <div class="panel-header"><div><p class="eyebrow" data-i18n="fr24_connectivity">Conectividade</p><h2 data-i18n="fr24_test_title">Testar Flightradar24</h2></div></div>

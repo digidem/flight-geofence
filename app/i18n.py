@@ -138,6 +138,10 @@ TRANSLATIONS = {
         "col_source": "Fonte",
         "areas_no_data": "Nenhuma área disponível",
         "areas_no_match": "Nenhuma área corresponde aos filtros",
+        "areas_subnav_aria": "Sub-navegação de áreas",
+        "areas_subnav_protected": "Áreas protegidas",
+        "areas_subnav_clusters": "Clusters",
+        "areas_clusters_explanation": "O retângulo delimitado no mapa representa a área geográfica consultada junto ao Flightradar24 para cobrir as áreas protegidas selecionadas.",
         # Events review
         "review_subtitle": "Evidência de calibração",
         "review_title": "Revisar eventos detectados",
@@ -606,6 +610,10 @@ TRANSLATIONS = {
         "col_source": "Source",
         "areas_no_data": "No areas available",
         "areas_no_match": "No areas match the filters",
+        "areas_subnav_aria": "Areas sub-navigation",
+        "areas_subnav_protected": "Protected areas",
+        "areas_subnav_clusters": "Clusters",
+        "areas_clusters_explanation": "The outlined rectangle on the minimap represents the geographic area queried from Flightradar24 to cover the selected protected areas.",
         # Events review
         "review_subtitle": "Calibration evidence",
         "review_title": "Review detected events",
