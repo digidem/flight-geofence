@@ -60,7 +60,8 @@ class TestTranslationKeyParity:
         legitimately_same = {"app_title", "email_altitude", "tz_manaus", "tz_belem",
                              "tz_riobranco", "tz_noronha", "err_boundaries_sync_running",
                              "nav_fr24", "fr24_subtitle",
-                             "monitoramento_fr24_summary"}
+                             "monitoramento_fr24_summary", "areas_subnav_clusters",
+                             "settings_step_fr24", "settings_section_fr24"}
         same -= legitimately_same
         assert not same, f"Keys with identical EN/PT values (possibly untranslated): {same}"
 
