@@ -1831,6 +1831,23 @@ function setField(form, key, setting) {
   }
   field.disabled = Boolean(setting.locked);
   if (setting.locked) field.title = t("env_controlled");
+
+  // Issue #19: surface locked badge for environment-locked settings
+  // Reading field name `locked` and source string `"environment"`
+  let badge = form.querySelector(`.env-badge[data-key="${key}"]`);
+  const isEnvLocked = setting.source === "environment" && Boolean(setting.locked);
+  if (isEnvLocked) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "signal env-badge";
+      badge.dataset.key = key;
+      badge.textContent = t("settings_locked_env");
+      field.parentElement?.appendChild(badge);
+    }
+    badge.hidden = false;
+  } else if (badge) {
+    badge.hidden = true;
+  }
 }
 
 function applyTranslations() {
@@ -1918,33 +1935,70 @@ async function loadSettings() {
   writeLocalPrefs();
 }
 
-function initSettingsStepper() {
+// Settings-step activation architecture (issue #19) -- single source of truth
+// for stepper state across stepper clicks, step navigation, and cross-section jumps.
+function showSettingsStep(n) {
   const stepper = document.querySelector(".settings-stepper");
   if (!stepper) return;
   const tabs = [...stepper.querySelectorAll('[role="tab"]')];
   const steps = [...document.querySelectorAll(".settings-step")];
-  function showStep(n) {
-    tabs.forEach((btn) => {
-      const isActive = btn.dataset.step === String(n);
-      btn.setAttribute("aria-selected", isActive ? "true" : "false");
-      btn.classList.toggle("active", isActive);
-    });
-    steps.forEach((panel) => {
-      const isActive = panel.id === `settings-step-${n}`;
-      panel.hidden = !isActive;
-      panel.classList.toggle("active", isActive);
-    });
-  }
   tabs.forEach((btn) => {
-    btn.addEventListener("click", () => showStep(btn.dataset.step));
+    const isActive = btn.dataset.step === String(n);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    btn.classList.toggle("active", isActive);
+  });
+  steps.forEach((panel) => {
+    const isActive = panel.id === `settings-step-${n}`;
+    panel.hidden = !isActive;
+    panel.classList.toggle("active", isActive);
+  });
+}
+
+// Cross-section navigation helper (issue #19) -- activates Settings primary
+// tab, updates step state via showSettingsStep(n), and scrolls/focuses the section.
+function openSettingsSection(sectionId) {
+  const settingsTab = document.querySelector('.tab[data-view="settings"]');
+  if (settingsTab) settingsTab.click();
+
+  const sectionStepMap = {
+    operacao: 1,
+    deteccao: 2,
+    notificacoes: 3,
+    fr24: 4,
+    sistema: 5,
+    registros: 6,
+  };
+  const stepNum = sectionStepMap[sectionId] || 1;
+  showSettingsStep(stepNum);
+
+  const sectionEl = document.getElementById(sectionId);
+  if (sectionEl) {
+    try {
+      sectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      sectionEl.focus();
+    } catch {}
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.showSettingsStep = showSettingsStep;
+  window.openSettingsSection = openSettingsSection;
+}
+
+function initSettingsStepper() {
+  const stepper = document.querySelector(".settings-stepper");
+  if (!stepper) return;
+  const tabs = [...stepper.querySelectorAll('[role="tab"]')];
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => showSettingsStep(btn.dataset.step));
   });
   document.querySelectorAll(".settings-next").forEach((btn) => {
-    btn.addEventListener("click", () => showStep(btn.dataset.next));
+    btn.addEventListener("click", () => showSettingsStep(btn.dataset.next));
   });
   document.querySelectorAll(".settings-prev").forEach((btn) => {
-    btn.addEventListener("click", () => showStep(btn.dataset.prev));
+    btn.addEventListener("click", () => showSettingsStep(btn.dataset.prev));
   });
-  showStep(1);
+  showSettingsStep(1);
 }
 
 function initAreasSubnav() {

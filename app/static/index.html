@@ -84,11 +84,7 @@
               <article class="panel">
                 <div class="panel-header"><div><p class="eyebrow" data-i18n="monitoramento_actions">Operações</p></div></div>
                 <div class="actions">
-                  <button id="sync-now" class="button secondary" data-i18n="sync_boundaries">Sincronizar limites oficiais</button>
-                  <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
-                  <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
                   <button id="refresh" class="button ghost dark" data-i18n="monitoramento_refresh">Atualizar status</button>
-                  <div id="action-result" class="muted" role="status" aria-live="polite"></div>
                 </div>
               </article>
             </aside>
@@ -204,9 +200,12 @@
           <button id="settings-step-tab-1" role="tab" aria-selected="true" aria-controls="settings-step-1" data-step="1" data-i18n="settings_step_operation">1 · Operação</button>
           <button id="settings-step-tab-2" role="tab" aria-selected="false" aria-controls="settings-step-2" data-step="2" data-i18n="settings_step_detection">2 · Detecção</button>
           <button id="settings-step-tab-3" role="tab" aria-selected="false" aria-controls="settings-step-3" data-step="3" data-i18n="settings_step_notifications">3 · Notificações</button>
+          <button id="settings-step-tab-4" role="tab" aria-selected="false" aria-controls="settings-step-4" data-step="4" data-i18n="settings_step_fr24" hidden>4 · FR24</button>
+          <button id="settings-step-tab-5" role="tab" aria-selected="false" aria-controls="settings-step-5" data-step="5" data-i18n="settings_step_system">5 · Sistema</button>
+          <button id="settings-step-tab-6" role="tab" aria-selected="false" aria-controls="settings-step-6" data-step="6" data-i18n="settings_step_logs" hidden>6 · Registros</button>
         </nav>
         <div id="settings-step-1" class="settings-step active" role="tabpanel" aria-labelledby="settings-step-tab-1">
-          <div class="grid two">
+          <section id="operacao" tabindex="-1">
             <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_workflow">Fluxo de trabalho</p><h2 data-i18n="settings_phase_providers">Fase e fornecedores</h2></div></div><form id="settings-core" class="form-grid">
               <label data-i18n="settings_operating_phase">Fase operacional<select name="operating_phase"><option value="shadow" data-i18n="phase_shadow">Sombra</option><option value="review" data-i18n="phase_review">Revisão</option><option value="live" data-i18n="phase_live">Ao vivo</option></select></label>
               <fieldset><legend data-i18n="settings_flight_providers">Fornecedores de voo</legend><label class="check"><input type="checkbox" name="flight_providers" value="adsb_lol"> <span data-i18n="provider_adsb_lol_cost">ADSB.lol — dados abertos/gratuitos</span></label><label class="check"><input type="checkbox" name="flight_providers" value="airplanes_live"> <span data-i18n="provider_airplanes_live_cost">Airplanes.live — tier gratuito não-comercial</span></label><label class="check"><input type="checkbox" name="flight_providers" value="adsbexchange"> <span data-i18n="provider_adsbexchange_cost">ADS-B Exchange — pago</span></label></fieldset>
@@ -214,39 +213,63 @@
               <label data-i18n="settings_poll_interval">Intervalo de consulta (segundos)<input name="poll_interval_seconds" type="number" min="30" max="86400"></label>
               <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar fluxo de trabalho</button><div class="form-result" role="status" aria-live="polite"></div>
             </form></article>
+            <article class="panel">
+              <div class="panel-header"><div><p class="eyebrow" data-i18n="settings_manual_actions">Ações manuais</p><h2 data-i18n="settings_operations_title">Operações</h2></div></div>
+              <div class="actions">
+                <button id="sync-now" class="button secondary" data-i18n="sync_boundaries">Sincronizar limites oficiais</button>
+                <button id="poll-now" class="button primary" data-i18n="run_poll">Executar consulta de voo agora</button>
+                <button id="test-email" class="button ghost dark" data-i18n="test_email">Testar entrega de e-mail</button>
+                <div id="action-result" class="muted" role="status" aria-live="polite"></div>
+              </div>
+            </article>
+          </section>
+          <div class="settings-step-nav"><span></span><button type="button" class="button secondary settings-next" data-next="2" data-i18n="settings_next">Próximo</button></div>
+        </div>
+        <div id="settings-step-2" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-2" hidden>
+          <section id="deteccao" tabindex="-1">
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_detection">Detecção</p><h2 data-i18n="settings_noise">Controles de ruído</h2></div></div><form id="settings-thresholds" class="form-grid compact">
+              <label data-i18n="settings_stop_obs">Observações para parada<input name="min_inside_observations_for_stop" type="number" min="2"></label><label data-i18n="settings_stop_duration">Duração mínima da parada (segundos)<input name="stop_min_duration_seconds" type="number" min="30"></label><label data-i18n="settings_stationary_radius">Raio estacionário (metros)<input name="stationary_radius_meters" type="number" min="50"></label><label data-i18n="settings_max_stop_speed">Velocidade máxima de parada (kt)<input name="stop_max_speed_kt" type="number" min="1"></label><label data-i18n="settings_disappear_obs">Observações para desaparecimento<input name="min_inside_observations_for_disappearance" type="number" min="2"></label><label data-i18n="settings_disappear_polls">Pollings bem-sucedidos para desaparecimento<input name="disappear_after_successful_polls" type="number" min="1"></label><label data-i18n="settings_disappear_alt">Altitude máxima de desaparecimento (ft)<input name="disappear_max_altitude_ft" type="number" min="0"></label><label data-i18n="settings_outside_obs">Observações externas para fechar episódio<input name="outside_confirmation_observations" type="number" min="1" max="10"></label><label data-i18n="settings_max_emails">Limite diário de e-mails<input name="max_emails_per_day" type="number" min="1"></label>
+              <button class="button primary" type="submit" data-i18n="settings_save_thresholds">Salvar limiares</button><div class="form-result" role="status" aria-live="polite"></div>
+            </form></article>
+          </section>
+          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="1" data-i18n="settings_prev">Anterior</button><button type="button" class="button secondary settings-next" data-next="3" data-i18n="settings_next">Próximo</button></div>
+        </div>
+        <div id="settings-step-3" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-3" hidden>
+          <section id="notificacoes" tabindex="-1">
+            <div class="grid two">
+              <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_notifications">Notificações</p><h2 data-i18n="settings_email">E-mail</h2></div></div><form id="settings-email" class="form-grid">
+                <label data-i18n="settings_email_provider">Provedor de e-mail<select name="email_provider"><option value="console" data-i18n="settings_console">Pré-visualização no console</option><option value="resend">Resend</option><option value="smtp">SMTP</option></select></label>
+                <label data-i18n="settings_recipients">Destinatários, separados por vírgula<input name="alert_recipients" type="text"></label>
+                <label data-i18n="settings_sender">Remetente<input name="email_from" type="text"></label>
+                <label data-i18n="settings_smtp_host">Host SMTP<input name="smtp_host" type="text"></label><label data-i18n="settings_smtp_port">Porta SMTP<input name="smtp_port" type="number"></label><label data-i18n="settings_smtp_user">Usuário SMTP<input name="smtp_username" type="text"></label><label data-i18n="settings_smtp_pass">Senha SMTP<input name="smtp_password" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label><label class="check"><input name="smtp_starttls" type="checkbox"> <span data-i18n="settings_smtp_starttls">Usar STARTTLS</span></label>
+                <button class="button primary" type="submit" data-i18n="settings_save_email">Salvar configurações de e-mail</button><div class="form-result" role="status" aria-live="polite"></div>
+              </form></article>
+              <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_secrets">Segredos</p><h2 data-i18n="settings_api_keys">Chaves de API</h2></div></div><form id="settings-keys" class="form-grid">
+                <label data-i18n="settings_fr24_key">Token Flightradar24<input name="flightradar24_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+                <label data-i18n="settings_adsb_key">Chave ADS-B Exchange<input name="adsbexchange_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+                <label data-i18n="settings_resend_key">Chave API Resend<input name="resend_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
+                <button class="button primary" type="submit" data-i18n="settings_save_keys">Salvar chaves com segurança</button><div class="form-result" role="status" aria-live="polite"></div>
+              </form></article>
+            </div>
+            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
+          </section>
+          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="2" data-i18n="settings_prev">Anterior</button><button type="button" class="button secondary settings-next" data-next="5" data-i18n="settings_next">Próximo</button></div>
+        </div>
+        <div id="settings-step-4" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-4" hidden>
+          <section id="fr24" tabindex="-1"></section>
+        </div>
+        <div id="settings-step-5" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-5" hidden>
+          <section id="sistema" tabindex="-1">
             <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_display">Display</p><h2 data-i18n="settings_timezone">Fuso horário</h2></div></div><form id="settings-display" class="form-grid">
               <label data-i18n="settings_language">Idioma<select id="settings-language" name="language"><option value="pt">Português</option><option value="en">English</option></select></label>
               <label data-i18n="timezone_label">Fuso horário do dashboard<select id="settings-timezone" name="timezone"><option value="UTC">UTC</option><option value="America/Sao_Paulo" data-i18n="tz_brasilia">Horário de Brasília (UTC-3)</option><option value="America/Manaus" data-i18n="tz_manaus">Manaus (UTC-4)</option><option value="America/Belem" data-i18n="tz_belem">Belém (UTC-3)</option><option value="America/Rio_Branco" data-i18n="tz_riobranco">Rio Branco (UTC-5)</option><option value="America/Noronha" data-i18n="tz_noronha">Fernando de Noronha (UTC-2)</option></select></label>
               <button class="button primary" type="submit" data-i18n="settings_save_workflow">Salvar</button><div class="form-result" role="status" aria-live="polite"></div>
             </form></article>
-          </div>
-          <div class="settings-step-nav"><span></span><button type="button" class="button secondary settings-next" data-next="2" data-i18n="settings_next">Próximo</button></div>
+          </section>
+          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="3" data-i18n="settings_prev">Anterior</button><span></span></div>
         </div>
-        <div id="settings-step-2" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-2" hidden>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_detection">Detecção</p><h2 data-i18n="settings_noise">Controles de ruído</h2></div></div><form id="settings-thresholds" class="form-grid compact">
-              <label data-i18n="settings_stop_obs">Observações para parada<input name="min_inside_observations_for_stop" type="number" min="2"></label><label data-i18n="settings_stop_duration">Duração mínima da parada (segundos)<input name="stop_min_duration_seconds" type="number" min="30"></label><label data-i18n="settings_stationary_radius">Raio estacionário (metros)<input name="stationary_radius_meters" type="number" min="50"></label><label data-i18n="settings_max_stop_speed">Velocidade máxima de parada (kt)<input name="stop_max_speed_kt" type="number" min="1"></label><label data-i18n="settings_disappear_obs">Observações para desaparecimento<input name="min_inside_observations_for_disappearance" type="number" min="2"></label><label data-i18n="settings_disappear_polls">Pollings bem-sucedidos para desaparecimento<input name="disappear_after_successful_polls" type="number" min="1"></label><label data-i18n="settings_disappear_alt">Altitude máxima de desaparecimento (ft)<input name="disappear_max_altitude_ft" type="number" min="0"></label><label data-i18n="settings_outside_obs">Observações externas para fechar episódio<input name="outside_confirmation_observations" type="number" min="1" max="10"></label><label data-i18n="settings_max_emails">Limite diário de e-mails<input name="max_emails_per_day" type="number" min="1"></label>
-              <button class="button primary" type="submit" data-i18n="settings_save_thresholds">Salvar limiares</button><div class="form-result" role="status" aria-live="polite"></div>
-            </form></article>
-          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="1" data-i18n="settings_prev">Anterior</button><button type="button" class="button secondary settings-next" data-next="3" data-i18n="settings_next">Próximo</button></div>
-        </div>
-        <div id="settings-step-3" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-3" hidden>
-          <div class="grid two">
-            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_notifications">Notificações</p><h2 data-i18n="settings_email">E-mail</h2></div></div><form id="settings-email" class="form-grid">
-              <label data-i18n="settings_email_provider">Provedor de e-mail<select name="email_provider"><option value="console" data-i18n="settings_console">Pré-visualização no console</option><option value="resend">Resend</option><option value="smtp">SMTP</option></select></label>
-              <label data-i18n="settings_recipients">Destinatários, separados por vírgula<input name="alert_recipients" type="text"></label>
-              <label data-i18n="settings_sender">Remetente<input name="email_from" type="text"></label>
-              <label data-i18n="settings_smtp_host">Host SMTP<input name="smtp_host" type="text"></label><label data-i18n="settings_smtp_port">Porta SMTP<input name="smtp_port" type="number"></label><label data-i18n="settings_smtp_user">Usuário SMTP<input name="smtp_username" type="text"></label><label data-i18n="settings_smtp_pass">Senha SMTP<input name="smtp_password" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label><label class="check"><input name="smtp_starttls" type="checkbox"> <span data-i18n="settings_smtp_starttls">Usar STARTTLS</span></label>
-              <button class="button primary" type="submit" data-i18n="settings_save_email">Salvar configurações de e-mail</button><div class="form-result" role="status" aria-live="polite"></div>
-            </form></article>
-            <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_secrets">Segredos</p><h2 data-i18n="settings_api_keys">Chaves de API</h2></div></div><form id="settings-keys" class="form-grid">
-              <label data-i18n="settings_fr24_key">Token Flightradar24<input name="flightradar24_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-              <label data-i18n="settings_adsb_key">Chave ADS-B Exchange<input name="adsbexchange_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-              <label data-i18n="settings_resend_key">Chave API Resend<input name="resend_api_key" type="password" data-i18n-placeholder="settings_placeholder" placeholder="Deixe em branco para manter existente"></label>
-              <button class="button primary" type="submit" data-i18n="settings_save_keys">Salvar chaves com segurança</button><div class="form-result" role="status" aria-live="polite"></div>
-            </form></article>
-          </div>
-          <article class="panel"><div class="panel-header"><div><p class="eyebrow" data-i18n="settings_connectivity">Conectividade</p><h2 data-i18n="settings_test_providers">Testar fornecedores</h2></div></div><div id="provider-tests" class="provider-tests"></div></article>
-          <div class="settings-step-nav"><button type="button" class="button ghost dark settings-prev" data-prev="2" data-i18n="settings_prev">Anterior</button><span></span></div>
+        <div id="settings-step-6" class="settings-step" role="tabpanel" aria-labelledby="settings-step-tab-6" hidden>
+          <section id="registros" tabindex="-1"></section>
         </div>
       </section>
 
